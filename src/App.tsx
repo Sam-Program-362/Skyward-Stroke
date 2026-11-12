@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import Game, { type Mode, type Result } from './Game';
 import { WORLDS, OUTFITS, HATS, TRAILS, loadStats, saveStats, level, type Stats } from './data';
 import { initAudio, playKey } from './audio';
-import { APP_NAME_WORDS, APP_CODE_NAME, APP_TAGLINE } from './config';
+import { APP_NAME, APP_NAME_WORDS, APP_CODE_NAME, APP_TAGLINE } from './config';
 
 type Screen = 'menu' | 'game' | 'result' | 'closet' | 'stats';
 
@@ -56,13 +56,17 @@ export default function App() {
       <div className="relative w-full max-w-4xl">
         <header className="menu-header text-center">
           <h1 className="menu-title font-black tracking-tight text-white drop-shadow-[0_6px_0_rgba(80,90,200,0.5)] flex flex-wrap justify-center gap-x-3">
-            {APP_NAME_WORDS.map((word, w) => (
-              <span key={w} className="inline-flex">
-                {word.split('').map((c, i) => (
-                  <span key={i} className="inline-block float-letter" style={{ animationDelay: `${(w * 6 + i) * 0.12}s` }}>{c}</span>
-                ))}
-              </span>
-            ))}
+            {/* The gap between words is visual only, so keep the real name available to screen readers. */}
+            <span className="sr-only">{APP_NAME}</span>
+            <span aria-hidden="true" className="flex flex-wrap justify-center gap-x-3">
+              {APP_NAME_WORDS.map((word, w) => (
+                <span key={w} className="inline-flex">
+                  {word.split('').map((c, i) => (
+                    <span key={i} className="inline-block float-letter" style={{ animationDelay: `${(w * 6 + i) * 0.12}s` }}>{c}</span>
+                  ))}
+                </span>
+              ))}
+            </span>
           </h1>
           <p className="menu-tag mt-3 text-indigo-900/70 font-semibold">{APP_TAGLINE}</p>
           <p className="mt-1 text-xs text-indigo-900/60 font-bold">Level {lvl} · {stats.tracks} tracks completed</p>

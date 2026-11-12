@@ -1,23 +1,32 @@
 let ctx: AudioContext | null = null;
-let master: GainNode;
-let musicGain: GainNode;
-let noiseBuf: AudioBuffer;
+// Set only once initAudio has succeeded; these stay undefined in a browser without Web Audio.
+let master!: GainNode;
+let musicGain!: GainNode;
+let noiseBuf!: AudioBuffer;
 let musicTimer: number | null = null;
 
 function wake() { if (ctx && ctx.state !== 'running' && !document.hidden) ctx.resume().catch(() => {}); }
 
+/** Audio is a nicety: if the browser has no Web Audio, or refuses to start it, the game plays on in silence. */
 export function initAudio() {
   if (ctx) { wake(); return; }
-  ctx = new AudioContext();
-  // Go quiet while the page is in the background. Phones and tablets may then only let sound
-  // start again from a tap or a key press, so those wake it too.
-  document.addEventListener('visibilitychange', () => { if (document.hidden) ctx?.suspend().catch(() => {}); else wake(); });
-  for (const ev of ['pointerup', 'touchend', 'keydown']) window.addEventListener(ev, wake, { passive: true });
-  master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
-  musicGain = ctx.createGain(); musicGain.gain.value = 0.18; musicGain.connect(master);
-  noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
-  const d = noiseBuf.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AC) return;
+  try {
+    const c = new AC();
+    // Go quiet while the page is in the background. Phones and tablets may then only let sound
+    // start again from a tap or a key press, so those wake it too.
+    document.addEventListener('visibilitychange', () => { if (document.hidden) c.suspend().catch(() => {}); else wake(); });
+    for (const ev of ['pointerup', 'touchend', 'keydown']) window.addEventListener(ev, wake, { passive: true });
+    const m = c.createGain(); m.gain.value = 0.8; m.connect(c.destination);
+    const mg = c.createGain(); mg.gain.value = 0.18; mg.connect(m);
+    const nb = c.createBuffer(1, c.sampleRate * 0.5, c.sampleRate);
+    const d = nb.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    ctx = c; master = m; musicGain = mg; noiseBuf = nb;
+  } catch {
+    ctx = null; // no audio this session; every player below already checks for it
+  }
 }
 
 function noise(t: number, dur: number, freq: number, q: number, vol: number, type: BiquadFilterType = 'bandpass') {

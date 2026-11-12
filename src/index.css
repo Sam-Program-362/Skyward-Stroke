@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* visually hidden, but still announced by screen readers */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0}
+
 html,body,#root{margin:0;height:100%;font-family:"Nunito",ui-rounded,system-ui,sans-serif;touch-action:manipulation}
 body{-webkit-tap-highlight-color:transparent}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
