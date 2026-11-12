@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+html,body,#root{margin:0;height:100%;font-family:"Nunito",ui-rounded,system-ui,sans-serif;touch-action:manipulation}
+body{-webkit-tap-highlight-color:transparent}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+@keyframes floatL{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes floatB{0%,100%{transform:translateY(0) rotate(-8deg)}50%{transform:translateY(-24px) rotate(8deg)}}
+.float-letter{animation:floatL 2.4s ease-in-out infinite}
+.float-block{animation:floatB 6s ease-in-out infinite}
+
+/* ---------- shared ---------- */
+/* tinted glass: keeps white text readable over the pale skies as well as the dark ones */
+.glass{background:rgba(26,30,72,.5);border:1px solid rgba(255,255,255,.2);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+/* deeper tint behind the text you have to read while typing */
+.glass-deep{background:rgba(22,26,64,.68)}
+.glass-btn{transition:background-color .15s}
+.glass-btn:hover{background:rgba(58,64,128,.55)}
+
+/* ---------- game screen ---------- */
+.game-root{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+/* the overlay keeps clear of notches and rounded screen corners */
+.hud{padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}
+.hud-compact{padding-top:max(6px,env(safe-area-inset-top))}
+.hud-kb{padding-bottom:6px}
+.note{color:#fff;font-weight:700;text-align:center;white-space:nowrap;text-shadow:0 1px 2px rgba(20,24,60,.6),0 0 12px rgba(20,24,60,.35)}
+
+/* typing prompt: one line of fixed-width cells sliding under a caret that stays put */
+.prompt{position:relative;height:2.3em;line-height:2.3em;border-radius:.6em;overflow:hidden;color:#fff;box-shadow:0 10px 30px rgba(20,24,60,.22);transition:background-color .15s}
+.prompt-window{position:absolute;inset:0;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 10%,#000 84%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 10%,#000 84%,transparent 100%)}
+.tape{position:absolute;top:0;bottom:0;left:calc(var(--lead) * var(--cw));transition:transform .13s cubic-bezier(.22,1,.36,1);will-change:transform}
+.tape-ch{position:absolute;top:0;width:var(--cw);text-align:center;white-space:pre;transition:color .12s}
+.caret{position:absolute;left:calc(var(--lead) * var(--cw));bottom:.4em;width:var(--cw);height:max(2px,.09em);border-radius:2px;background:#fff;box-shadow:0 0 .45em rgba(255,255,255,.85)}
+.prompt-err{background:rgba(214,58,84,.6);animation:shake .25s}
+.prompt-err .caret{background:#ffb1b1;box-shadow:none}
+.prompt-progress{position:absolute;left:0;bottom:0;height:3px;background:rgba(255,255,255,.8);transition:width .2s}
+@media (prefers-reduced-motion:reduce){.tape{transition:none}}
+
+/* on-screen keyboard. --cell is one key plus its gap: ten across, capped at --kw wide */
+.kb{--cell:min(calc(var(--kw) + var(--kg)),10%);position:relative;z-index:10;flex:none;touch-action:none;-webkit-user-select:none;user-select:none;
+  padding:0 max(3px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(3px,env(safe-area-inset-left));
+  background:rgba(26,30,72,.16);border-top:1px solid rgba(255,255,255,.28)}
+.kb-row{display:flex;justify-content:center}
+/* the button is the touch area and fills its whole cell; the visible keycap sits inside it */
+.kb-key{flex:0 0 var(--cell);min-width:0;height:calc(var(--kh) + var(--kg));padding:calc(var(--kg) / 2);display:flex;cursor:pointer;touch-action:none;outline:none;-webkit-tap-highlight-color:transparent}
+.kb-cap{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;border-radius:calc(var(--kh) * .2);background:rgba(26,30,72,.5);border:1px solid rgba(255,255,255,.28);color:#fff;font-weight:800;font-size:calc(var(--kh) * .42);line-height:1;pointer-events:none;transition:background-color .14s,color .14s,transform .14s}
+.kb-key[data-down] .kb-cap{background:rgba(255,255,255,.9);color:#23285e;transform:scale(.94);transition:none}
+/* shorter rows: the end keys' touch areas stretch out to where the row above ends */
+.kb-row-9 .kb-key:first-child{flex-basis:calc(var(--cell) * 1.5);padding-left:calc(var(--cell) * .5 + var(--kg) / 2)}
+.kb-row-9 .kb-key:last-child{flex-basis:calc(var(--cell) * 1.5);padding-right:calc(var(--cell) * .5 + var(--kg) / 2)}
+.kb-row-7 .kb-key:first-child{flex-basis:calc(var(--cell) * 2.5);padding-left:calc(var(--cell) * 1.5 + var(--kg) / 2)}
+.kb-row-7 .kb-key:last-child{flex-basis:calc(var(--cell) * 2.5);padding-right:calc(var(--cell) * 1.5 + var(--kg) / 2)}
+/* bottom row: the space bar's touch area takes nine cells (the bar itself stays centred), the hide key the tenth */
+.kb-space{flex-basis:calc(var(--cell) * 9);padding-left:calc(var(--cell) * 2.25 + var(--kg) / 2);padding-right:calc(var(--cell) * 1.25 + var(--kg) / 2)}
+.kb-space .kb-cap{font-size:calc(var(--kh) * .3);font-weight:700;letter-spacing:.08em;color:rgba(255,255,255,.85)}
+.kb-hide .kb-cap{background:rgba(26,30,72,.24);font-weight:400}
+.kb-hide:active .kb-cap{background:rgba(255,255,255,.5)}
+
+/* ---------- menu ---------- */
+.menu-root{min-height:100vh;min-height:100dvh;padding:max(2rem,env(safe-area-inset-top)) max(1rem,env(safe-area-inset-right)) max(2rem,env(safe-area-inset-bottom)) max(1rem,env(safe-area-inset-left))}
+.menu-header{margin-bottom:2rem}
+.menu-title{font-size:clamp(1.75rem,9vw,3rem);line-height:1.05}
+.menu-nav{margin-bottom:1.5rem}
+.menu-desc{margin-bottom:1.25rem}
+.menu-actions{margin-top:2rem}
+.world-grid{display:grid;gap:1rem}
+.world-card{height:9rem;padding:1.25rem}
+.world-name{font-size:1.5rem;line-height:2rem}
+.world-note{font-size:.875rem;line-height:1.25rem}
+.world-tiles{right:1rem;bottom:1rem}
+.world-tile{width:2.25rem;height:2.25rem}
+@media (min-width:640px){
+  .menu-title{font-size:4.25rem}
+  .world-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* small screens: a button centres its text vertically, which runs it into the letter tiles on narrow cards, so pin it to the top */
+@media (max-width:899px),(max-height:520px) and (orientation:landscape){
+  .world-card{display:flex;flex-direction:column;justify-content:flex-start;align-items:flex-start}
+}
+/* a phone held sideways: tighten everything so the whole menu fits on one screen */
+@media (max-height:520px) and (orientation:landscape){
+  .menu-root{padding-top:max(.75rem,env(safe-area-inset-top));padding-bottom:max(.75rem,env(safe-area-inset-bottom))}
+  .menu-header{margin-bottom:.6rem}
+  .menu-title{font-size:1.6rem}
+  .menu-tag{display:none}
+  .menu-nav{margin-bottom:.5rem}
+  .menu-desc{margin-bottom:.5rem}
+  .menu-actions{margin-top:.7rem}
+  .world-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem}
+  .world-card{height:7.5rem;padding:.7rem .8rem}
+  .world-name{font-size:1.1rem;line-height:1.4rem}
+  .world-note{font-size:.7rem;line-height:1rem}
+  .world-tiles{right:.5rem;bottom:.5rem}
+  .world-tile{width:1.5rem;height:1.5rem;font-size:.75rem}
+}
+@media (max-height:520px) and (orientation:landscape) and (min-width:640px){
+  .world-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
