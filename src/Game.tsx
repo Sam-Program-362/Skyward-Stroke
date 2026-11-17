@@ -44,7 +44,6 @@ export interface Result {
 }
 
 const TIERS = ['#ffffff', '#3fd67a', '#ffc53d', '#ff5fd2'];
-/** Zen mode always keeps at least this many characters queued up ahead of the caret. */
 const ZEN_BUFFER = 110;
 const NATIVE_SENTINEL = '\u200B';
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -59,7 +58,6 @@ interface Layout {
 
 function layoutFor(w: number, h: number, keyboard: boolean, hasNumRow: boolean): Layout {
   const kind: Kind = h < 500 && w > h * 1.15 ? 'compact' : w < 640 ? 'narrow' : 'regular';
-  // Virtual keyboard now always has 5 rows (Punctuation + 3 QWERTY + Bottom), or 6 when Numbers row is open
   const rows = hasNumRow ? 6 : 5;
   const keys: KeyMetrics =
     kind === 'compact'
@@ -109,7 +107,6 @@ export default function Game({
   const nativeInputRef = useRef<HTMLInputElement>(null);
   const engRef = useRef<Engine | null>(null);
 
-  // What this run is typed on. A ghost is always raced on the exact text it was recorded on.
   const [run] = useState(() => {
     if (mode === 'zen') return { text: zenText(world, playSettings), ghost: null };
     const g = mode === 'ghost' ? stats.ghosts[world.id] : undefined;
@@ -166,7 +163,6 @@ export default function Game({
     setMusicVolume(playSettings.musicVolume);
   }, [playSettings, deviceMode]);
 
-  // Auto-focus native input when starting in mobile-native mode
   useEffect(() => {
     if (deviceMode === 'mobile-native') {
       const t = setTimeout(() => nativeInputRef.current?.focus(), 60);
@@ -245,7 +241,6 @@ export default function Game({
         e.start();
       }
       const expected = st.text[st.typed];
-      // When uppercase setting is off, normalize input to match expected lowercase text
       const key = playSettings.uppercase ? rawKey : rawKey.toLowerCase();
 
       if (key === expected) {
@@ -303,7 +298,6 @@ export default function Game({
     [mode, muted, onFinish, playSettings, stats.ghosts, world]
   );
 
-  // Handle input from the Mobile Native OS Keyboard <input> element
   const handleNativeChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
       const chars = extractNativeInputChars(e.target.value, NATIVE_SENTINEL);
@@ -321,7 +315,6 @@ export default function Game({
         onExit(s.current.words, s.current.maxCombo);
         return;
       }
-      // If event originated inside the Mobile Native OS <input>, let handleNativeChange process printable input
       if (ev.target === nativeInputRef.current && ev.key !== 'Unidentified') {
         return;
       }
@@ -359,7 +352,7 @@ export default function Game({
           compact || narrow ? 'px-2.5 py-1.5 text-xs' : 'px-3.5 py-2 text-sm'
         }`}
       >
-        {compact || narrow ? '← Menu' : '← Menu'}
+        ← Menu
       </button>
       <button
         type="button"
@@ -376,7 +369,6 @@ export default function Game({
         {muted ? '🔇' : '🔊'}
       </button>
 
-      {/* Live In-Game Device / Keyboard System Switcher */}
       <div
         role="group"
         aria-label="Input Device Mode"
@@ -489,7 +481,6 @@ export default function Game({
           />
         </div>
 
-        {/* HUD overlay */}
         <div
           className={`hud absolute inset-0 flex flex-col pointer-events-none ${
             compact ? 'hud-compact' : ''
@@ -546,7 +537,6 @@ export default function Game({
         )}
       </div>
 
-      {/* MOBILE NATIVE OS KEYBOARD DOCK */}
       {isMobileNative && (
         <div
           data-testid="native-keyboard-dock"
@@ -614,7 +604,6 @@ export default function Game({
         </div>
       )}
 
-      {/* BUILT-IN VIRTUAL KEYBOARD */}
       {showKb && (
         <Keyboard
           onKey={press}
