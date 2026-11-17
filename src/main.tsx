@@ -2,11 +2,11 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App";
-import { PWAInstallBanner } from "./pwa/PWAInstallBanner";
+import { RegisterSW } from "./register-sw";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <PWAInstallBanner />
+    <RegisterSW />
     <App />
   </StrictMode>
 );

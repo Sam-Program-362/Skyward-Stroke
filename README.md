@@ -45,25 +45,27 @@ Choose the interface and input system that matches your device or emulator (from
 - **Shareable Metadata Card (`PNG` / `JPG` / Web Share)**: Render and download a high-resolution `1200×630` card showcasing your rank, WPM, accuracy, top combo, unlocked worlds, and active rules.
 - **Save Data Export / Import (`JSON`)**: Export your complete progress, ghosts, cosmetics, and settings as a `.json` file (or copy to clipboard) and restore anytime.
 
-### 5. Installable Fullscreen / Standalone PWA (Zero Chrome Top Bar)
-- Configured with a complete **Web App Manifest** (`display: "fullscreen"`, `display_override: ["fullscreen", "standalone", "minimal-ui"]`, `useCredentials: true` / `crossorigin="use-credentials"` so authenticated preview hosts serve the manifest with cookies), offline **Workbox Service Worker**, iOS Safari full-screen meta tags (`apple-mobile-web-app-capable`), and `192×192`, `512×512`, maskable `512×512`, and `180×180` Apple Touch PNG icons.
-- **Android Chrome Top-Bar Suppression**: Includes both native WebAPK fullscreen support and an automatic **Hide Top Bar (Immersive Fullscreen)** engine (`requestFullscreen({ navigationUI: 'hide' })`) that is enabled by default on Android and `/?fullscreen=1` launches—automatically removing the Chrome top URL bar and system navigation bars on your first tap even if launched from a home-screen shortcut.
-- Click **⛶ Hide Top Bar** or **Install App** on the top right of the menu to play or install *Skyward Stroke* on Android, iOS, desktop, or mobile emulators with zero browser chrome.
+### 5. Installable Standalone PWA (`display: "standalone"`)
+- **Web App Manifest (`/manifest.webmanifest`)**: Declares application identity (`name`, `short_name`, `description`), `id: "/"`, `start_url: "/"`, `scope: "/"`, `display: "standalone"`, `orientation: "portrait"`, `theme_color: "#1e1b4b"`, `background_color: "#1e1b4b"`, and `prefer_related_applications: false`.
+- **Application Icons**: Includes `public/icon-192.png` (`192×192`), `public/icon-512.png` (`512×512`), and a separately designed mask-safe `public/icon-maskable-512.png` (`512×512`, `purpose: "maskable"`).
+- **Installability Service Worker (`public/sw.js` & `src/register-sw.ts`)**: Globally registered via `<RegisterSW />` in `src/main.tsx`. Implements a network pass-through worker (`skipWaiting`, `clients.claim`, and same-origin `GET` pass-through excluding `/api/*` and `/login`) that deliberately caches nothing.
 
 ## Project Layout
 
 ```
-index.html                 entry HTML: title, PWA & iOS standalone meta tags, icons
-vite.config.ts             Vite + React + Tailwind + VitePWA configuration
+index.html                 entry HTML: title, viewport-fit=cover, theme-color, manifest & icon links
+vite.config.ts             Vite + React + Tailwind + PWA MIME header configuration
 public/
+  manifest.webmanifest     Web App Manifest (display: standalone)
+  sw.js                    network pass-through Service Worker (no offline cache)
   icon.svg                 vector brand icon
-  pwa-192x192.png          192×192 standard PWA icon
-  pwa-512x512.png          512×512 standard PWA icon
-  pwa-maskable-512x512.png 512×512 maskable Android icon (with safe-zone padding)
-  apple-touch-icon.png     180×180 iOS home screen icon
+  icon-192.png             192×192 standard PWA icon
+  icon-512.png             512×512 standard PWA icon
+  icon-maskable-512.png    512×512 maskable Android icon (with safe-zone padding)
 src/
   config.ts                application name, code name, tagline, version, storage key
-  main.tsx                 React root + standalone PWA registration & install banner
+  main.tsx                 React root + global <RegisterSW /> component
+  register-sw.ts           client component registering /sw.js
   App.tsx                  menu, device selector, world grid, results, profile, closet, settings
   Game.tsx                 single run: prompt tape, HUD, physical/native/virtual input handling
   Engine.ts                three.js scene: 8 floating world themes, multi-part runner, particles
@@ -72,12 +74,10 @@ src/
   audio.ts                 Web Audio synthesizer: 4 sound profiles, chords, fanfares, music
   data.ts                  worlds, prompt decks, cosmetics, saved stats and ghosts
   index.css                Tailwind import plus game, HUD, and virtual keyboard styles
-  pwa/
-    usePWAInstall.ts       hook for standalone detection, beforeinstallprompt & offline state
-    PWAInstallBanner.tsx   in-app Install App button, device install guide & offline badge
   utils/
     gameLogic.ts           pure typing modifiers, virtual keyboard resolver & JSON backup parser
     gameLogic.test.ts      unit test suite (node:test)
     shareCard.ts           1200×630 canvas metadata card renderer & PNG/JPG/JSON exporter
     cn.ts                  className helper
 ```
+
