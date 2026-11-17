@@ -16,6 +16,7 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: "auto",
+      useCredentials: true,
       includeAssets: [
         "icon.svg",
         "apple-touch-icon.png",
@@ -31,10 +32,10 @@ export default defineConfig({
           "Skyward Stroke — a 3D typing adventure across floating worlds. Type the path. Find your flow.",
         theme_color: "#1e1b4b",
         background_color: "#1e1b4b",
-        display: "standalone",
+        display: "fullscreen",
         display_override: ["fullscreen", "standalone", "minimal-ui"],
         orientation: "any",
-        start_url: "/",
+        start_url: "/?fullscreen=1",
         scope: "/",
         categories: ["games", "education", "productivity"],
         icons: [
@@ -60,6 +61,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}"],
+        navigateFallback: "index.html",
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

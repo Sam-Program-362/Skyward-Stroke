@@ -45,9 +45,10 @@ Choose the interface and input system that matches your device or emulator (from
 - **Shareable Metadata Card (`PNG` / `JPG` / Web Share)**: Render and download a high-resolution `1200×630` card showcasing your rank, WPM, accuracy, top combo, unlocked worlds, and active rules.
 - **Save Data Export / Import (`JSON`)**: Export your complete progress, ghosts, cosmetics, and settings as a `.json` file (or copy to clipboard) and restore anytime.
 
-### 5. Installable Standalone PWA (No Browser Top Bar)
-- Configured with a complete **Web App Manifest** (`display: "standalone"`, `display_override: ["fullscreen", "standalone", "minimal-ui"]`), offline **Workbox Service Worker**, iOS Safari full-screen meta tags (`apple-mobile-web-app-capable`), and `192×192`, `512×512`, maskable `512×512`, and `180×180` Apple Touch PNG icons.
-- Click the **Install App** button on the top right of the menu (or use your browser's *Add to Home Screen* / *Install App* action) to launch *Skyward Stroke* as a standalone native-style app on Android, iOS, desktop, or mobile emulators with zero browser chrome.
+### 5. Installable Fullscreen / Standalone PWA (Zero Chrome Top Bar)
+- Configured with a complete **Web App Manifest** (`display: "fullscreen"`, `display_override: ["fullscreen", "standalone", "minimal-ui"]`, `useCredentials: true` / `crossorigin="use-credentials"` so authenticated preview hosts serve the manifest with cookies), offline **Workbox Service Worker**, iOS Safari full-screen meta tags (`apple-mobile-web-app-capable`), and `192×192`, `512×512`, maskable `512×512`, and `180×180` Apple Touch PNG icons.
+- **Android Chrome Top-Bar Suppression**: Includes both native WebAPK fullscreen support and an automatic **Hide Top Bar (Immersive Fullscreen)** engine (`requestFullscreen({ navigationUI: 'hide' })`) that is enabled by default on Android and `/?fullscreen=1` launches—automatically removing the Chrome top URL bar and system navigation bars on your first tap even if launched from a home-screen shortcut.
+- Click **⛶ Hide Top Bar** or **Install App** on the top right of the menu to play or install *Skyward Stroke* on Android, iOS, desktop, or mobile emulators with zero browser chrome.
 
 ## Project Layout
 

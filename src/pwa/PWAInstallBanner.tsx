@@ -2,11 +2,24 @@ import { useEffect, useState } from 'react';
 import { usePWAInstall } from './usePWAInstall';
 
 /**
- * In-app PWA Install button & guide modal + Offline connectivity indicator.
- * Automatically hides when already installed in standalone/fullscreen mode or during active gameplay.
+ * In-app PWA Install button, Chrome Top-Bar Hider (Immersive Fullscreen),
+ * guide modal, and Offline connectivity indicator.
+ * Automatically hides when already in standalone/fullscreen mode or during active gameplay.
  */
 export function PWAInstallBanner() {
-  const { isInstallable, isInstalled, isIOS, isOnline, install } = usePWAInstall();
+  const {
+    isInstallable,
+    isInstalled,
+    isFullscreen,
+    isIOS,
+    isAndroid,
+    isOnline,
+    autoFullscreen,
+    setAutoFullscreen,
+    enterFullscreen,
+    toggleFullscreen,
+    install,
+  } = usePWAInstall();
   const [showGuide, setShowGuide] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -41,15 +54,33 @@ export function PWAInstallBanner() {
         </div>
       )}
 
-      {/* Prominent Install App Button (hidden when already installed or during active 3D track run) */}
+      {/* Top-Right Controls: Hide Top Bar (Fullscreen) + Install App */}
       {!isInstalled && !isPlaying && (
         <div
-          className="fixed z-40"
+          className="fixed z-40 flex items-center gap-2"
           style={{
             top: 'max(12px, env(safe-area-inset-top))',
             right: 'max(12px, env(safe-area-inset-right))',
           }}
         >
+          {!isIOS && (
+            <button
+              type="button"
+              onClick={() => void toggleFullscreen()}
+              data-testid="pwa-fullscreen-btn"
+              aria-label={isFullscreen ? 'Exit Fullscreen' : 'Hide Chrome Top Bar (Fullscreen)'}
+              title="Hides the Chrome top bar and system navigation bars immediately"
+              className={`flex items-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-black shadow-lg border transition cursor-pointer ${
+                isFullscreen
+                  ? 'bg-emerald-600/95 hover:bg-emerald-700 text-white border-emerald-300/40'
+                  : 'bg-indigo-950/90 hover:bg-slate-950 text-sky-200 border-sky-300/30'
+              }`}
+            >
+              <span aria-hidden="true">{isFullscreen ? '🗗' : '⛶'}</span>
+              <span>{isFullscreen ? 'Fullscreen Active' : 'Hide Top Bar'}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleInstallClick}
@@ -76,7 +107,7 @@ export function PWAInstallBanner() {
         </div>
       )}
 
-      {/* Standalone Installation Guide Modal (for iOS Safari, Android Emulators, or Preview Windows) */}
+      {/* Standalone Installation & Chrome Top-Bar Removal Modal */}
       {showGuide && (
         <div
           role="dialog"
@@ -84,7 +115,7 @@ export function PWAInstallBanner() {
           aria-labelledby="pwa-install-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4"
         >
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-indigo-100 text-slate-800">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-indigo-100 text-slate-800 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3 mb-3">
               <div className="flex items-center gap-3">
                 <img
@@ -97,7 +128,7 @@ export function PWAInstallBanner() {
                     Install Skyward Stroke
                   </h3>
                   <p className="text-xs font-semibold text-slate-500">
-                    Full-screen native app experience · No browser bar
+                    Full-screen native app experience · Zero Chrome top bar
                   </p>
                 </div>
               </div>
@@ -111,29 +142,74 @@ export function PWAInstallBanner() {
               </button>
             </div>
 
-            {isInstallable && (
-              <button
-                type="button"
-                onClick={async () => {
-                  const ok = await install();
-                  if (ok) setShowGuide(false);
-                }}
-                className="w-full mb-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm shadow-md cursor-pointer"
-              >
-                📲 Install Directly Now
-              </button>
+            <div className="flex flex-col gap-2 mb-4">
+              {isInstallable && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const ok = await install();
+                    if (ok) setShowGuide(false);
+                  }}
+                  className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm shadow-md cursor-pointer"
+                >
+                  📲 Install Standalone App Now
+                </button>
+              )}
+
+              {!isIOS && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await enterFullscreen();
+                    setShowGuide(false);
+                  }}
+                  className="w-full py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md cursor-pointer"
+                >
+                  ⛶ Hide Chrome Top Bar Immediately (Immersive Fullscreen)
+                </button>
+              )}
+            </div>
+
+            {!isIOS && (
+              <div className="mb-3 p-3 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-black text-indigo-950">
+                    Auto-Hide Chrome Top Bar on First Tap {isAndroid ? '(Android Default)' : ''}
+                  </div>
+                  <div className="text-[11px] text-indigo-800/80 font-medium">
+                    Automatically enters native fullscreen & removes the Chrome URL bar on touch
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={autoFullscreen}
+                  onClick={() => setAutoFullscreen(!autoFullscreen)}
+                  className={`px-3 py-1.5 rounded-xl font-black text-xs shrink-0 transition cursor-pointer ${
+                    autoFullscreen
+                      ? 'bg-indigo-600 text-white shadow'
+                      : 'bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {autoFullscreen ? 'ON' : 'OFF'}
+                </button>
+              </div>
             )}
 
             <div className="space-y-2.5 text-xs text-slate-700 mb-5">
               <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                 <div className="font-black text-slate-900 mb-1">
-                  📱 Android / Mobile Emulator (Chrome)
+                  📱 Android / Mobile Emulator (No Chrome Top Bar)
                 </div>
                 <p className="leading-relaxed">
-                  Open this URL in a top-level browser tab, tap the browser menu{' '}
-                  <strong>⋮</strong> (top right), and tap{' '}
-                  <strong>Install app</strong> or <strong>Add to Home screen</strong>. It launches
-                  full-screen without any browser address bar.
+                  1. Open the <strong>Shared App URL</strong> (or top-level tab) in Chrome, tap{' '}
+                  <strong>⋮</strong> (top right), and choose <strong>Install app</strong> (if you
+                  installed an older shortcut earlier, delete that icon first and re-install so
+                  Android uses the updated <code>fullscreen</code> manifest with credentials).
+                  <br />
+                  2. Even if opened from a shortcut, <strong>Auto-Hide Chrome Top Bar</strong> is{' '}
+                  <strong>ON</strong> by default on Android—your very first tap hides the Chrome
+                  bar completely.
                 </p>
               </div>
 
