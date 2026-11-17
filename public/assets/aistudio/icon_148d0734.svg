@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="sky" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#312e81" />
+      <stop offset="55%" stop-color="#4f46e5" />
+      <stop offset="100%" stop-color="#ec4899" />
+    </linearGradient>
+    <linearGradient id="tile" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa" />
+      <stop offset="100%" stop-color="#3b82f6" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#sky)" />
+  <circle cx="400" cy="116" r="42" fill="#fde047" opacity="0.88" />
+  <!-- Floating 3D path tiles -->
+  <rect x="86" y="344" width="96" height="54" rx="16" fill="#38bdf8" opacity="0.55" transform="rotate(-8 134 371)" />
+  <rect x="196" y="316" width="110" height="60" rx="18" fill="#60a5fa" opacity="0.8" transform="rotate(-8 251 346)" />
+  <!-- Main S keycap block -->
+  <rect x="136" y="136" width="240" height="232" rx="48" fill="#1e3a8a" />
+  <rect x="136" y="116" width="240" height="224" rx="48" fill="url(#tile)" stroke="#ffffff" stroke-width="8" stroke-opacity="0.45" />
+  <text x="256" y="278" font-size="168" font-family="Nunito, Arial, sans-serif" font-weight="900" fill="#ffffff" text-anchor="middle">S</text>
+  <rect x="206" y="302" width="100" height="10" rx="5" fill="#fde047" />
+</svg>

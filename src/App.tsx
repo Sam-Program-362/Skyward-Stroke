@@ -39,6 +39,7 @@ import {
   shareMetadataImage,
   downloadBackupJson,
 } from './utils/shareCard';
+import { PWAInstallControl } from './components/PWAInstallControl';
 
 type Screen = 'menu' | 'game' | 'result' | 'closet' | 'stats' | 'settings';
 
@@ -365,24 +366,31 @@ export default function App() {
 
       <main className="relative w-full max-w-6xl">
         <header className="menu-header text-center">
-          <h1 className="menu-title font-black tracking-tight text-white drop-shadow-[0_6px_0_rgba(80,90,200,0.5)] flex flex-wrap justify-center gap-x-3">
-            <span className="sr-only">{APP_NAME}</span>
-            <span aria-hidden="true" className="flex flex-wrap justify-center gap-x-3">
-              {APP_NAME_WORDS.map((wordStr, w) => (
-                <span key={w} className="inline-flex">
-                  {wordStr.split('').map((c, i) => (
-                    <span
-                      key={i}
-                      className="inline-block float-letter"
-                      style={{ animationDelay: `${(w * 6 + i) * 0.12}s` }}
-                    >
-                      {c}
-                    </span>
-                  ))}
-                </span>
-              ))}
-            </span>
-          </h1>
+          <div className="flex items-center justify-center gap-3 mb-1">
+            <img
+              src="/icon.svg"
+              alt="Skyward Stroke Logo"
+              className="w-11 h-11 sm:w-13 sm:h-13 rounded-2xl shadow-lg border border-white/40 shrink-0"
+            />
+            <h1 className="menu-title font-black tracking-tight text-white drop-shadow-[0_6px_0_rgba(80,90,200,0.5)] flex flex-wrap justify-center gap-x-3">
+              <span className="sr-only">{APP_NAME}</span>
+              <span aria-hidden="true" className="flex flex-wrap justify-center gap-x-3">
+                {APP_NAME_WORDS.map((wordStr, w) => (
+                  <span key={w} className="inline-flex">
+                    {wordStr.split('').map((c, i) => (
+                      <span
+                        key={i}
+                        className="inline-block float-letter"
+                        style={{ animationDelay: `${(w * 6 + i) * 0.12}s` }}
+                      >
+                        {c}
+                      </span>
+                    ))}
+                  </span>
+                ))}
+              </span>
+            </h1>
+          </div>
           <p className="menu-tag mt-2 text-indigo-950/80 font-bold text-base sm:text-lg">
             {APP_TAGLINE}
           </p>
@@ -449,7 +457,7 @@ export default function App() {
               aria-label="Quick Play Settings"
               className="max-w-4xl mx-auto mb-5 bg-white/75 rounded-2xl p-3 sm:px-5 sm:py-3.5 shadow-md border border-white/60 space-y-2.5"
             >
-              {/* Row 1: Device & Input Profile Selector */}
+              {/* Row 1: Device & Input Profile Selector + PWA Install */}
               <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-indigo-900/10">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs font-black uppercase tracking-wider text-indigo-950/70 mr-1">
@@ -483,16 +491,19 @@ export default function App() {
                     );
                   })}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    click(3);
-                    setShowDeviceModal(true);
-                  }}
-                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  📱/🖥️ Device Guide
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <PWAInstallControl onActionSound={() => click(4)} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      click(3);
+                      setShowDeviceModal(true);
+                    }}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    📱/🖥️ Device Guide
+                  </button>
+                </div>
               </div>
 
               {/* Row 2: Typing Rules & Tone */}

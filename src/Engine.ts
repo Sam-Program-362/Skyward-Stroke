@@ -1,1086 +1,971 @@
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import type { World, Look } from './data';
-import { OUTFITS } from './data';
-import { frameView, applyFraming, placeCamera, type Framing, type Insets } from './framing';
+import { OUTFITS, type Look, type World } from './data';
+import { applyFraming, type Insets } from './framing';
 
-const STEP = 1.15;
-const TIER_COLORS = ['', '#3fd67a', '#ffc53d', '#ff5fd2'];
-const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
+const STEP_X = 1.35;
+const STEP_Z = -0.35;
 
-const isSoftwareGl = (() => {
+function isSoftwareWebGL(gl: WebGLRenderingContext | WebGL2RenderingContext): boolean {
   try {
-    const gl = document.createElement('canvas').getContext('webgl2');
-    if (!gl) return true;
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
-    const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
-    const gpu = String(gl.getParameter(param));
-    gl.getExtension('WEBGL_lose_context')?.loseContext();
-    return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
+    if (ext) {
+      const r = String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '');
+      if (/swiftshader|llvmpipe|software|mesa offscreen/i.test(r)) return true;
+    }
   } catch {
-    return false;
+    // ignore
   }
-})();
-
-interface Block {
-  g: THREE.Group;
-  mat: THREE.MeshStandardMaterial;
-  placed: boolean;
-  t: number;
-  x: number;
-  seed: number;
-  pulse: number;
-  lmat?: THREE.MeshBasicMaterial;
-}
-interface Particle {
-  m: THREE.Mesh;
-  v: THREE.Vector3;
-  life: number;
-  max: number;
+  return false;
 }
 
-const letterCache = new Map<string, THREE.Texture>();
-function letterTex(ch: string, maxAnisotropy = 4) {
-  const key = ch;
-  if (letterCache.has(key)) return letterCache.get(key)!;
+const texCache = new Map<string, THREE.CanvasTexture>();
+function letterTex(ch: string, maxAnisotropy = 1): THREE.CanvasTexture {
+  const key = ch || ' ';
+  const hit = texCache.get(key);
+  if (hit) return hit;
+
   const c = document.createElement('canvas');
-  c.width = c.height = 128;
-  const x = c.getContext('2d')!;
-  const isUpper = ch >= 'A' && ch <= 'Z';
-  const isPunct = !/[a-zA-Z0-9 ]/.test(ch);
+  c.width = 256;
+  c.height = 256;
+  const g = c.getContext('2d')!;
+  g.clearRect(0, 0, 256, 256);
 
-  x.font = `${isPunct ? '900 96px' : '900 88px'} "Nunito", "Arial Rounded MT Bold", Arial, sans-serif`;
-  x.textAlign = 'center';
-  x.textBaseline = 'middle';
+  // High-contrast dark-tinted keycap well so white/gold letters pop on every world color
+  const grad = g.createLinearGradient(0, 16, 0, 240);
+  grad.addColorStop(0, 'rgba(15, 23, 42, 0.42)');
+  grad.addColorStop(1, 'rgba(15, 23, 42, 0.68)');
+  g.fillStyle = grad;
+  g.beginPath();
+  g.roundRect(16, 16, 224, 224, 38);
+  g.fill();
 
-  // Drop shadow
-  x.fillStyle = 'rgba(0,0,0,0.28)';
-  x.fillText(ch, 66, 70);
+  // Crisp bright keycap bevel border
+  g.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+  g.lineWidth = 8;
+  g.beginPath();
+  g.roundRect(20, 20, 216, 216, 34);
+  g.stroke();
 
-  // Main character glyph (exact case preserved!)
-  x.fillStyle = isPunct ? '#ffe89e' : '#ffffff';
-  x.fillText(ch, 64, 66);
+  if (!ch || ch === ' ') {
+    // Stylized 3D spacebar emblem
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 14;
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.beginPath();
+    g.moveTo(68, 130);
+    g.lineTo(68, 158);
+    g.lineTo(188, 158);
+    g.lineTo(188, 130);
+    g.stroke();
+  } else {
+    const isUpper = /^[A-Z]$/.test(ch);
+    const isPunct = !/[a-zA-Z0-9]/.test(ch);
+    const isNum = /^[0-9]$/.test(ch);
 
-  // Subtle uppercase indicator bar underneath capital letters so A vs a is unmistakable on 3D tiles
-  if (isUpper) {
-    x.fillStyle = 'rgba(255,255,255,0.85)';
-    x.beginPath();
-    x.roundRect(42, 104, 44, 7, 3.5);
-    x.fill();
+    // Deep drop shadow under glyph
+    g.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    g.font = '900 148px Nunito, system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(ch, 128, 134);
+
+    // Main vibrant glyph fill
+    g.fillStyle = isPunct ? '#fde047' : isNum ? '#7dd3fc' : '#ffffff';
+    g.fillText(ch, 128, 124);
+
+    if (isUpper) {
+      g.fillStyle = '#fde047';
+      g.beginPath();
+      g.roundRect(72, 196, 112, 16, 8);
+      g.fill();
+    } else if (isPunct) {
+      g.fillStyle = '#fde047';
+      g.beginPath();
+      g.arc(200, 56, 11, 0, Math.PI * 2);
+      g.fill();
+    }
   }
 
-  const t = new THREE.CanvasTexture(c);
-  t.anisotropy = maxAnisotropy;
-  t.colorSpace = THREE.SRGBColorSpace;
-  letterCache.set(key, t);
-  return t;
-}
-
-function makeContactShadowTex(): THREE.CanvasTexture {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const ctx = c.getContext('2d')!;
-  const grad = ctx.createRadialGradient(32, 32, 4, 32, 32, 30);
-  grad.addColorStop(0, 'rgba(15, 20, 45, 0.52)');
-  grad.addColorStop(0.6, 'rgba(15, 20, 45, 0.22)');
-  grad.addColorStop(1, 'rgba(15, 20, 45, 0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 64, 64);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy;
+  tex.needsUpdate = true;
+  texCache.set(key, tex);
   return tex;
 }
 
-let sharedShadowTex: THREE.CanvasTexture | null = null;
-
-export function buildChar(look: Look, ghost = false) {
-  const g = new THREE.Group();
-  const outfitObj = OUTFITS.find(o => o.id === look.outfit) || OUTFITS[0];
-  const outfitCol = outfitObj.color;
-  const accentCol = outfitObj.accent || '#ffffff';
-
-  const mk = (c: string, rough = 0.55, metal = 0.08) =>
-    new THREE.MeshStandardMaterial({
-      color: c,
-      roughness: rough,
-      metalness: metal,
-      transparent: ghost,
-      opacity: ghost ? 0.35 : 1,
-      depthWrite: !ghost,
-    });
-
-  const skin = mk(ghost ? '#bfe3ff' : '#fff3eb', 0.65, 0.02);
-  const shirt = mk(ghost ? '#bfe3ff' : outfitCol, 0.5, 0.1);
-  const trim = mk(ghost ? '#bfe3ff' : accentCol, 0.35, 0.2);
-  const pants = mk(ghost ? '#bfe3ff' : '#252d44', 0.7, 0.05);
-  const shoe = mk(ghost ? '#bfe3ff' : '#ff4757', 0.45, 0.1);
-  const soleMat = mk(ghost ? '#bfe3ff' : '#ffffff', 0.8, 0.0);
-
-  // 1. Contact shadow disc at ground level
-  if (!ghost) {
-    if (!sharedShadowTex) sharedShadowTex = makeContactShadowTex();
-    const shadowDisc = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.95, 0.95),
-      new THREE.MeshBasicMaterial({
-        map: sharedShadowTex,
-        transparent: true,
-        depthWrite: false,
-      })
-    );
-    shadowDisc.rotation.x = -Math.PI / 2;
-    shadowDisc.position.y = 0.02;
-    g.add(shadowDisc);
-  }
-
-  // 2. Torso + Collar + Belt Trim
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.26, 0.32, 8, 14), shirt);
-  body.position.y = 0.72;
-  g.add(body);
-
-  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.055, 8, 18), trim);
-  collar.rotation.x = Math.PI / 2;
-  collar.position.set(0.02, 0.96, 0);
-  g.add(collar);
-
-  // 3. Fluttering Scarf / Cape Wing behind the neck (-X is behind the runner)
-  const scarfPivot = new THREE.Group();
-  scarfPivot.position.set(-0.18, 0.95, 0);
-  const scarfMesh = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.08, 0.24), trim);
-  scarfMesh.position.set(-0.16, -0.02, 0);
-  scarfPivot.add(scarfMesh);
-  g.add(scarfPivot);
-
-  // 4. Back-mounted Flow Jetpack + Glowing Core
-  const pack = new THREE.Group();
-  pack.position.set(-0.24, 0.74, 0);
-  const packShell = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.3, 0.32), pants);
-  pack.add(packShell);
-  const coreMat = new THREE.MeshStandardMaterial({
-    color: ghost ? '#bfe3ff' : '#38bdf8',
-    emissive: ghost ? '#bfe3ff' : '#38bdf8',
-    emissiveIntensity: ghost ? 0.2 : 0.7,
-    roughness: 0.2,
-    transparent: ghost,
-    opacity: ghost ? 0.35 : 1,
-  });
-  const packCore = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.18, 10), coreMat);
-  packCore.rotation.z = Math.PI / 2;
-  packCore.position.set(-0.05, 0, 0);
-  pack.add(packCore);
-  g.add(pack);
-
-  // 5. Head + Facial Details (+X is facing forward along the track)
-  const headGroup = new THREE.Group();
-  headGroup.position.y = 1.28;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 22, 18), skin);
-  headGroup.add(head);
-
-  if (!ghost) {
-    const eyeMat = new THREE.MeshStandardMaterial({ color: '#181c30', roughness: 0.15, metalness: 0.2 });
-    const shineMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
-    const blushMat = new THREE.MeshBasicMaterial({ color: '#ff8da1', transparent: true, opacity: 0.45 });
-
-    for (const s of [-1, 1]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.042, 10, 10), eyeMat);
-      eye.position.set(0.285, 0.03, s * 0.11);
-      eye.scale.set(0.6, 1.15, 1);
-      headGroup.add(eye);
-
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 6), shineMat);
-      pupil.position.set(0.31, 0.048, s * 0.102);
-      headGroup.add(pupil);
-
-      const blush = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), blushMat);
-      blush.position.set(0.265, -0.045, s * 0.17);
-      blush.scale.set(0.4, 0.7, 1.1);
-      headGroup.add(blush);
-    }
-  }
-  g.add(headGroup);
-
-  // 6. Articulated Legs + Sneakers with Soles
-  const legs: THREE.Group[] = [];
-  for (const s of [-1, 1]) {
-    const leg = new THREE.Group();
-    leg.position.set(0, 0.48, s * 0.13);
-    const l = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.22, 6, 10), pants);
-    l.position.y = -0.2;
-    leg.add(l);
-
-    const sh = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.1, 0.16), shoe);
-    sh.position.set(0.04, -0.39, 0);
-    leg.add(sh);
-
-    const sole = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.035, 0.17), soleMat);
-    sole.position.set(0.04, -0.445, 0);
-    leg.add(sole);
-
-    g.add(leg);
-    legs.push(leg);
-  }
-
-  // 7. Articulated Arms + Hands
-  const arms: THREE.Group[] = [];
-  for (const s of [-1, 1]) {
-    const arm = new THREE.Group();
-    arm.position.set(0, 0.95, s * 0.32);
-    const a = new THREE.Mesh(new THREE.CapsuleGeometry(0.072, 0.24, 6, 10), shirt);
-    a.position.y = -0.19;
-    arm.add(a);
-    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.078, 0.05, 10), trim);
-    cuff.position.y = -0.3;
-    arm.add(cuff);
-    const h = new THREE.Mesh(new THREE.SphereGeometry(0.082, 10, 10), skin);
-    h.position.y = -0.38;
-    arm.add(h);
-    g.add(arm);
-    arms.push(arm);
-  }
-
-  // 8. Hats & Headgear
-  if (!ghost) {
-    if (look.hat === 'hair') {
-      const m = mk('#ff6a2b', 0.65);
-      const hair = new THREE.Mesh(
-        new THREE.SphereGeometry(0.34, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
-        m
-      );
-      hair.position.y = 0.03;
-      hair.rotation.z = 0.25;
-      headGroup.add(hair);
-      // Tuft spike
-      const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.22, 6), m);
-      tuft.position.set(0.08, 0.36, 0);
-      tuft.rotation.z = -0.35;
-      headGroup.add(tuft);
-    } else if (look.hat === 'cap') {
-      const m = mk('#ff3b5c', 0.5);
-      const c = new THREE.Mesh(
-        new THREE.SphereGeometry(0.34, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.5),
-        m
-      );
-      c.position.y = 0.05;
-      headGroup.add(c);
-      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.04, 16), m);
-      brim.position.set(0.28, 0.08, 0);
-      brim.scale.set(1.2, 1, 0.9);
-      headGroup.add(brim);
-    } else if (look.hat === 'visor') {
-      const visorMat = new THREE.MeshStandardMaterial({
-        color: '#00f0ff',
-        emissive: '#00d8ff',
-        emissiveIntensity: 0.75,
-        roughness: 0.15,
-        metalness: 0.8,
-      });
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.335, 0.335, 0.12, 20, 1, true), visorMat);
-      band.position.y = 0.04;
-      headGroup.add(band);
-      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.14, 0.04), trim);
-      fin.position.set(-0.05, 0.34, 0);
-      fin.rotation.z = 0.25;
-      headGroup.add(fin);
-    } else if (look.hat === 'beanie') {
-      const m = mk('#ffd23d', 0.75);
-      const c = new THREE.Mesh(
-        new THREE.SphereGeometry(0.345, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
-        m
-      );
-      c.position.y = 0.04;
-      headGroup.add(c);
-      const p = new THREE.Mesh(new THREE.SphereGeometry(0.095, 10, 10), mk('#ffffff', 0.85));
-      p.position.y = 0.4;
-      headGroup.add(p);
-    } else if (look.hat === 'crown') {
-      const m = new THREE.MeshStandardMaterial({ color: '#ffcc33', metalness: 0.85, roughness: 0.2 });
-      const c = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.22, 0.18, 6, 1, true), m);
-      c.position.y = 0.34;
-      headGroup.add(c);
-      for (let i = 0; i < 6; i++) {
-        const s = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.15, 4), m);
-        const a = (i / 6) * Math.PI * 2;
-        s.position.set(Math.cos(a) * 0.23, 0.48, Math.sin(a) * 0.23);
-        headGroup.add(s);
-      }
-    } else if (look.hat === 'halo') {
-      const haloMat = new THREE.MeshStandardMaterial({
-        color: '#fef08a',
-        emissive: '#facc15',
-        emissiveIntensity: 0.9,
-        roughness: 0.15,
-        metalness: 0.6,
-      });
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.038, 12, 28), haloMat);
-      ring.rotation.x = Math.PI / 2;
-      ring.position.y = 0.48;
-      headGroup.add(ring);
-    }
-  }
-
-  g.traverse(o => {
-    if ((o as THREE.Mesh).isMesh && o.position.y > 0.03) {
-      o.castShadow = !ghost && !isSoftwareGl;
-    }
-  });
-  g.userData = { legs, arms, body, headGroup, scarfPivot, coreMat };
-  return g;
+interface Block {
+  group: THREE.Group;
+  meshGroup: THREE.Group;
+  mat: THREE.MeshPhongMaterial;
+  rimMat: THREE.MeshLambertMaterial;
+  capMat: THREE.MeshLambertMaterial;
+  topMat: THREE.MeshBasicMaterial;
+  ringMesh: THREE.Mesh;
+  ringMat: THREE.MeshBasicMaterial;
+  basePos: THREE.Vector3;
+  y: number;
+  vy: number;
+  scale: number;
+  rotX: number;
+  rotZ: number;
+  ch: string;
+  typed: boolean;
 }
 
+interface Particle {
+  mesh: THREE.Mesh;
+  vx: number;
+  vy: number;
+  vz: number;
+  rx: number;
+  ry: number;
+  life: number;
+  maxLife: number;
+}
+
+const TIER_HEX = [0x4c7dff, 0x10b981, 0xf59e0b, 0xec4899];
+
 export class Engine {
-  renderer: THREE.WebGLRenderer;
-  scene = new THREE.Scene();
-  camera: THREE.PerspectiveCamera;
-  world: World;
-  text = '';
-  typed = 0;
-  combo = 0;
-  blocks = new Map<number, Block>();
-  char!: THREE.Group;
-  ghost?: THREE.Group;
-  look: Look;
-  charX = -STEP;
-  fromX = -STEP;
-  hopT = 1;
-  stumble = 0;
-  runPhase = 0;
-  ghostTimes: number[] | null = null;
-  startTime = 0;
-  ghostX = -STEP;
-  particles: Particle[] = [];
-  ambient: THREE.Points | null = null;
-  finishFlag?: THREE.Group;
-  raf = 0;
-  timerId = 0;
-  disposed = false;
-  lastTime = performance.now();
-  elapsedTime = 0;
-  camX = 0;
-  framing: Framing = frameView(800, 600, NO_INSETS);
-  zoom = 0;
-  viewKey = '';
-  maxAnisotropy = 4;
-  geoBlock = new RoundedBoxGeometry(1, 0.42, 1.5, 3, 0.12);
-  geoSpace = new RoundedBoxGeometry(1, 0.3, 1.5, 3, 0.1);
-  geoLetter = new THREE.PlaneGeometry(0.8, 0.8);
-  pGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
-  bubbleGeo = new THREE.SphereGeometry(0.1, 8, 6);
-  onStep?: () => void;
-  showFinish = true;
-  islands = new THREE.Group();
+  private renderer: THREE.WebGLRenderer;
+  private scene: THREE.Scene;
+  private cam: THREE.PerspectiveCamera;
+  private world: World;
+  private look: Look;
+  private isSoftGl = false;
+  private maxAniso = 1;
+
+  private blocks: Block[] = [];
+  private islands = new THREE.Group();
+  private finishGroup = new THREE.Group();
+  private charGroup: THREE.Group;
+  private leftLeg: THREE.Mesh | null = null;
+  private rightLeg: THREE.Mesh | null = null;
+  private leftArm: THREE.Mesh | null = null;
+  private rightArm: THREE.Mesh | null = null;
+  private scarfMesh: THREE.Mesh | null = null;
+  private ghostGroup: THREE.Group;
+  private trailParticles: Particle[] = [];
+  private ambientMesh: THREE.Points | null = null;
+
+  // Shared geometries for blocks & particles
+  private bodyGeo = new THREE.BoxGeometry(1.08, 0.34, 1.08);
+  private rimGeo = new THREE.BoxGeometry(1.12, 0.18, 1.12);
+  private capGeo = new THREE.BoxGeometry(0.96, 0.08, 0.96);
+  private topPlaneGeo = new THREE.PlaneGeometry(0.9, 0.9);
+  private ringGeo = new THREE.RingGeometry(0.56, 0.67, 24);
+  private particleGeo = new THREE.OctahedronGeometry(0.11, 0);
+  private bubbleGeo = new THREE.SphereGeometry(0.1, 8, 8);
+
+  private text = '';
+  private typed = 0;
+  private started = false;
+  private ghostTimes: number[] | null = null;
+  private runStartMs = 0;
+
+  private charPos = new THREE.Vector3(-STEP_X, 0, -STEP_Z);
+  private charFrom = new THREE.Vector3(-STEP_X, 0, -STEP_Z);
+  private charTo = new THREE.Vector3(-STEP_X, 0, -STEP_Z);
+  private jumpT = 1;
+  private jumpSpin = 0;
+  private shakeT = 0;
+
+  private w = 800;
+  private h = 600;
+  private insets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
+  private raf = 0;
+  private timerId = 0;
+  private disposed = false;
+  private lastMs = performance.now();
+
+  public showFinish = true;
+  public onStep?: () => void;
 
   constructor(canvas: HTMLCanvasElement, world: World, look: Look) {
     this.world = world;
     this.look = look;
+
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: !isSoftwareGl,
+      antialias: true,
       alpha: true,
       powerPreference: 'high-performance',
     });
+    const gl = this.renderer.getContext();
+    this.isSoftGl = isSoftwareWebGL(gl);
+    this.maxAniso = this.renderer.capabilities.getMaxAnisotropy?.() || 1;
+    this.renderer.setPixelRatio(this.isSoftGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
-    this.renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.shadowMap.enabled = !isSoftwareGl;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.maxAnisotropy = this.renderer.capabilities.getMaxAnisotropy() || 4;
 
-    if (!isSoftwareGl) {
-      try {
-        const pmrem = new THREE.PMREMGenerator(this.renderer);
-        this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-        pmrem.dispose();
-      } catch {
-        // ignore if PMREM fails
+    this.scene = new THREE.Scene();
+    this.scene.fog = new THREE.FogExp2(world.fog, 0.02);
+
+    this.cam = new THREE.PerspectiveCamera(45, 1.33, 0.1, 150);
+
+    const hemi = new THREE.HemisphereLight(0xffffff, world.island, 1.2);
+    this.scene.add(hemi);
+
+    const dir = new THREE.DirectionalLight(0xfff8eb, 1.35);
+    dir.position.set(14, 26, 18);
+    this.scene.add(dir);
+
+    const rimLight = new THREE.DirectionalLight(0xa5f3fc, 0.55);
+    rimLight.position.set(-12, 10, -14);
+    this.scene.add(rimLight);
+
+    this.scene.add(this.islands);
+    this.scene.add(this.finishGroup);
+
+    this.charGroup = this.buildChar(look, false);
+    this.scene.add(this.charGroup);
+
+    this.ghostGroup = this.buildChar(look, true);
+    this.ghostGroup.visible = false;
+    this.scene.add(this.ghostGroup);
+
+    this.buildAmbientParticles();
+    this.scheduleNextFrame();
+  }
+
+  private buildChar(look: Look, isGhost: boolean): THREE.Group {
+    const g = new THREE.Group();
+    const outfit = OUTFITS.find(o => o.id === look.outfit) || OUTFITS[0];
+    const bodyCol = isGhost ? 0xa5f3fc : outfit.color;
+    const accentCol = isGhost ? 0xffffff : outfit.accent || '#ffffff';
+    const matOpts = isGhost ? { transparent: true, opacity: 0.42 } : {};
+
+    // Contact shadow
+    if (!isGhost) {
+      const shadow = new THREE.Mesh(
+        new THREE.CircleGeometry(0.44, 20),
+        new THREE.MeshBasicMaterial({
+          color: 0x090d24,
+          transparent: true,
+          opacity: 0.32,
+          depthWrite: false,
+        })
+      );
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.y = 0.02;
+      g.add(shadow);
+    }
+
+    // Legs & Sneakers
+    const shoeMat = new THREE.MeshLambertMaterial({
+      color: isGhost ? 0xffffff : 0xef4444,
+      ...matOpts,
+    });
+    const legMat = new THREE.MeshLambertMaterial({
+      color: isGhost ? 0xcffafe : 0x1e293b,
+      ...matOpts,
+    });
+    [-0.14, 0.14].forEach((zOff, idx) => {
+      const legPivot = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.28, 10), legMat);
+      legPivot.position.set(0, 0.2, zOff);
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.11, 0.15), shoeMat);
+      shoe.position.set(0.04, -0.13, 0);
+      legPivot.add(shoe);
+      g.add(legPivot);
+      if (!isGhost) {
+        if (idx === 0) this.leftLeg = legPivot;
+        else this.rightLeg = legPivot;
+      }
+    });
+
+    // Torso
+    const torso = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.26, 0.28, 8, 14),
+      new THREE.MeshPhongMaterial({
+        color: bodyCol,
+        shininess: 45,
+        ...matOpts,
+      })
+    );
+    torso.position.y = 0.56;
+    g.add(torso);
+
+    // Swinging Arms
+    const armMat = new THREE.MeshLambertMaterial({ color: bodyCol, ...matOpts });
+    [-0.31, 0.31].forEach((zOff, idx) => {
+      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.2, 6, 10), armMat);
+      arm.position.set(0, 0.56, zOff);
+      g.add(arm);
+      if (!isGhost) {
+        if (idx === 0) this.leftArm = arm;
+        else this.rightArm = arm;
+      }
+    });
+
+    // Collar & fluttering scarf
+    const collarMat = new THREE.MeshLambertMaterial({ color: accentCol, ...matOpts });
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.055, 8, 18), collarMat);
+    collar.rotation.x = Math.PI / 2;
+    collar.position.y = 0.78;
+    g.add(collar);
+
+    const scarf = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.085, 0.15), collarMat);
+    scarf.position.set(-0.26, 0.75, 0.08);
+    scarf.rotation.z = 0.22;
+    g.add(scarf);
+    if (!isGhost) this.scarfMesh = scarf;
+
+    // Flow Jetpack
+    const pack = new THREE.Mesh(
+      new THREE.BoxGeometry(0.17, 0.3, 0.28),
+      new THREE.MeshLambertMaterial({ color: isGhost ? 0xbae6fd : 0x334155, ...matOpts })
+    );
+    pack.position.set(-0.24, 0.56, 0);
+    g.add(pack);
+
+    // Head
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.31, 18, 16),
+      new THREE.MeshLambertMaterial({ color: isGhost ? 0xe0f2fe : 0xfff3eb, ...matOpts })
+    );
+    head.position.y = 1.08;
+    g.add(head);
+
+    // Eyes
+    if (!isGhost) {
+      const eyeMat = new THREE.MeshBasicMaterial({ color: 0x181c30 });
+      [-0.1, 0.1].forEach(zOff => {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), eyeMat);
+        eye.position.set(0.27, 1.1, zOff);
+        g.add(eye);
+      });
+    }
+
+    // Hat / Hair
+    if (look.hat === 'cap') {
+      const cap = new THREE.Mesh(
+        new THREE.SphereGeometry(0.325, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55),
+        new THREE.MeshLambertMaterial({ color: 0xff3b5c, ...matOpts })
+      );
+      cap.position.y = 1.1;
+      g.add(cap);
+      const brim = new THREE.Mesh(
+        new THREE.BoxGeometry(0.26, 0.035, 0.34),
+        new THREE.MeshLambertMaterial({ color: 0xe11d48, ...matOpts })
+      );
+      brim.position.set(0.24, 1.12, 0);
+      g.add(brim);
+    } else if (look.hat === 'crown') {
+      const crown = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.24, 0.2, 0.17, 6),
+        new THREE.MeshPhongMaterial({ color: 0xffcc33, shininess: 90, ...matOpts })
+      );
+      crown.position.y = 1.42;
+      g.add(crown);
+    } else if (look.hat === 'halo') {
+      const halo = new THREE.Mesh(
+        new THREE.TorusGeometry(0.27, 0.038, 10, 24),
+        new THREE.MeshBasicMaterial({ color: 0xfef08a })
+      );
+      halo.rotation.x = Math.PI / 2;
+      halo.position.y = 1.52;
+      g.add(halo);
+    } else {
+      const hair = new THREE.Mesh(
+        new THREE.SphereGeometry(0.33, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.58),
+        new THREE.MeshLambertMaterial({
+          color: look.hat === 'beanie' ? 0xffd23d : look.hat === 'visor' ? 0x00f0ff : 0xff6a2b,
+          ...matOpts,
+        })
+      );
+      hair.position.y = 1.1;
+      g.add(hair);
+    }
+
+    return g;
+  }
+
+  private buildAmbientParticles() {
+    if (this.world.particles === 'none') return;
+    const count = this.isSoftGl ? 70 : 140;
+    const pos = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      pos[i * 3] = (Math.random() - 0.2) * 44;
+      pos[i * 3 + 1] = (Math.random() - 0.3) * 18;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 34;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const colMap: Record<string, number> = {
+      petals: 0xffb3d9,
+      snow: 0xffffff,
+      stars: 0xfef08a,
+      embers: 0xfb923c,
+      fireflies: 0x6ee7b7,
+      bubbles: 0x67e8f9,
+    };
+    const mat = new THREE.PointsMaterial({
+      color: colMap[this.world.particles] || 0xffffff,
+      size: 0.24,
+      transparent: true,
+      opacity: 0.82,
+    });
+    this.ambientMesh = new THREE.Points(geo, mat);
+    this.scene.add(this.ambientMesh);
+  }
+
+  private posFor(idx: number): THREE.Vector3 {
+    const wave = Math.sin(idx * 0.35) * 0.65;
+    return new THREE.Vector3(idx * STEP_X, 0, idx * STEP_Z + wave);
+  }
+
+  private addIsland(pos: THREE.Vector3, radius = 2.2) {
+    const g = new THREE.Group();
+    g.position.copy(pos);
+
+    const top = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius, radius * 0.88, 0.44, 7),
+      new THREE.MeshLambertMaterial({ color: this.world.grass })
+    );
+    top.position.y = -0.22;
+    g.add(top);
+
+    const rock = new THREE.Mesh(
+      new THREE.ConeGeometry(radius * 0.86, radius * 1.4, 7),
+      new THREE.MeshLambertMaterial({ color: this.world.island })
+    );
+    rock.rotation.x = Math.PI;
+    rock.position.y = -0.44 - (radius * 1.4) / 2;
+    g.add(rock);
+
+    // Decorative tree/crystal prop
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.12, 0.58, 6),
+      new THREE.MeshLambertMaterial({ color: 0x78350f })
+    );
+    trunk.position.set(-radius * 0.42, 0.28, -radius * 0.28);
+    g.add(trunk);
+
+    const crown = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.45, 0),
+      new THREE.MeshLambertMaterial({ color: this.world.sky[1] })
+    );
+    crown.position.set(-radius * 0.42, 0.72, -radius * 0.28);
+    g.add(crown);
+
+    this.islands.add(g);
+  }
+
+  private buildFinishGate(pos: THREE.Vector3) {
+    this.finishGroup.clear();
+    if (!this.showFinish) return;
+
+    this.finishGroup.position.copy(pos);
+    this.addIsland(pos.clone().add(new THREE.Vector3(STEP_X * 0.9, 0, STEP_Z * 0.9)), 2.4);
+
+    const pillarMat = new THREE.MeshPhongMaterial({ color: 0xfef08a, shininess: 80 });
+    const archGroup = new THREE.Group();
+    archGroup.position.set(STEP_X * 0.65, 0, STEP_Z * 0.65);
+    archGroup.rotation.y = Math.atan2(-STEP_Z, STEP_X);
+
+    [-1.05, 1.05].forEach(zOff => {
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 2.4, 10), pillarMat);
+      p.position.set(0, 1.2, zOff);
+      archGroup.add(p);
+    });
+
+    const beam = new THREE.Mesh(
+      new THREE.BoxGeometry(0.24, 0.32, 2.45),
+      new THREE.MeshPhongMaterial({ color: 0x6366f1, emissive: 0x312e81, emissiveIntensity: 0.4 })
+    );
+    beam.position.set(0, 2.35, 0);
+    archGroup.add(beam);
+
+    const star = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.32, 0),
+      new THREE.MeshBasicMaterial({ color: 0xfde047 })
+    );
+    star.position.set(0, 2.85, 0);
+    archGroup.add(star);
+
+    this.finishGroup.add(archGroup);
+  }
+
+  public setText(text: string, typed: number) {
+    this.text = text;
+    this.typed = typed;
+
+    for (const b of this.blocks) this.scene.remove(b.group);
+    this.blocks = [];
+    this.islands.clear();
+    this.finishGroup.clear();
+
+    // Starting island
+    this.addIsland(new THREE.Vector3(-STEP_X * 1.2, 0, -STEP_Z * 1.2), 2.5);
+
+    for (let i = 0; i < text.length; i++) {
+      this.spawnBlock(i, text[i]);
+      if (i > 0 && i % 12 === 0) {
+        const side = i % 24 === 0 ? -1 : 1;
+        const p = this.posFor(i).add(new THREE.Vector3(0, -0.6, side * 4.2));
+        this.addIsland(p, 1.7);
       }
     }
 
-    this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
-    applyFraming(this.camera, this.framing, 800, 600, NO_INSETS);
+    if (this.showFinish && text.length > 0) {
+      this.buildFinishGate(this.posFor(text.length - 1));
+    }
 
-    const hemi = new THREE.HemisphereLight('#ffffff', '#7788bb', 1.65);
-    this.scene.add(hemi);
+    const startPos = typed > 0 ? this.posFor(typed - 1) : new THREE.Vector3(-STEP_X, 0, -STEP_Z);
+    this.charPos.copy(startPos);
+    this.charFrom.copy(startPos);
+    this.charTo.copy(startPos);
+    this.charGroup.position.copy(startPos);
+  }
 
-    const sun = new THREE.DirectionalLight('#fff5e4', 2.2);
-    sun.position.set(-4, 10, 6);
-    sun.castShadow = !isSoftwareGl;
-    sun.shadow.mapSize.set(1024, 1024);
-    sun.shadow.bias = -0.0005;
-    sun.shadow.normalBias = 0.02;
-    Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10 });
-    this.scene.add(sun, sun.target);
-    this.scene.userData.sun = sun;
+  public appendText(more: string) {
+    const startIdx = this.text.length;
+    this.text += more;
+    for (let i = 0; i < more.length; i++) {
+      this.spawnBlock(startIdx + i, more[i]);
+    }
+  }
 
-    this.scene.add(this.islands);
-    this.setupWorld();
-    this.char = buildChar(look);
-    this.char.position.set(-STEP, 0.21, 0);
-    this.scene.add(this.char);
-    this.scheduleNextFrame();
+  private spawnBlock(idx: number, ch: string) {
+    const pos = this.posFor(idx);
+    const group = new THREE.Group();
+    const meshGroup = new THREE.Group();
+    group.add(meshGroup);
+
+    const isSpace = ch === ' ';
+    const isTyped = idx < this.typed;
+    const baseColor = new THREE.Color(isSpace ? '#475569' : this.world.block);
+    const darkRimColor = baseColor.clone().multiplyScalar(0.42);
+    const capColor = baseColor.clone().multiplyScalar(0.88);
+
+    // 1. Deep 3D bottom shadow plinth (gives every block tactile keycap depth)
+    const rimMat = new THREE.MeshLambertMaterial({
+      color: darkRimColor,
+      transparent: true,
+      opacity: isTyped ? 1 : 0.9,
+    });
+    const rimBox = new THREE.Mesh(this.rimGeo, rimMat);
+    rimBox.position.y = -0.35;
+    meshGroup.add(rimBox);
+
+    // 2. Main 3D block body with specular & emissive combo glow
+    const mat = new THREE.MeshPhongMaterial({
+      color: baseColor,
+      emissive: baseColor.clone().multiplyScalar(isTyped ? 0.22 : 0.06),
+      shininess: 65,
+      specular: new THREE.Color(0xffffff),
+      transparent: true,
+      opacity: isTyped ? 1 : 0.88,
+    });
+    const box = new THREE.Mesh(this.bodyGeo, mat);
+    box.position.y = -0.17;
+    meshGroup.add(box);
+
+    // 3. Raised beveled keycap top rim
+    const capMat = new THREE.MeshLambertMaterial({
+      color: capColor,
+      transparent: true,
+      opacity: isTyped ? 1 : 0.94,
+    });
+    const capBox = new THREE.Mesh(this.capGeo, capMat);
+    capBox.position.y = 0.01;
+    meshGroup.add(capBox);
+
+    // 4. Crisp high-contrast letter decal on keycap face
+    const topMat = new THREE.MeshBasicMaterial({
+      map: letterTex(ch, this.maxAniso),
+      transparent: true,
+      opacity: isTyped ? 1 : 0.98,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    const topPlane = new THREE.Mesh(this.topPlaneGeo, topMat);
+    topPlane.rotation.x = -Math.PI / 2;
+    topPlane.position.y = 0.055;
+    meshGroup.add(topPlane);
+
+    // 5. Target beacon halo ring (visible on the current expected block)
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xfde047,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const ringMesh = new THREE.Mesh(this.ringGeo, ringMat);
+    ringMesh.rotation.x = -Math.PI / 2;
+    ringMesh.position.y = 0.02;
+    ringMesh.visible = idx === this.typed;
+    meshGroup.add(ringMesh);
+
+    group.position.copy(pos);
+    const inInitialWindow = idx <= this.typed + 13;
+    const initScale = inInitialWindow ? (isTyped ? 1 : 0.95) : 0.01;
+    const initY = inInitialWindow ? (isTyped ? 0 : 0.1) : -1.8;
+    group.position.y = pos.y + initY;
+    group.scale.setScalar(initScale);
+    group.visible = idx <= this.typed + 15;
+    this.scene.add(group);
+
+    this.blocks.push({
+      group,
+      meshGroup,
+      mat,
+      rimMat,
+      capMat,
+      topMat,
+      ringMesh,
+      ringMat,
+      basePos: pos.clone(),
+      y: initY,
+      vy: 0,
+      scale: initScale,
+      rotX: 0,
+      rotZ: 0,
+      ch,
+      typed: isTyped,
+    });
+  }
+
+  private spawnTrailBurst(origin: THREE.Vector3, combo: number, isWordEnd: boolean) {
+    const count = this.isSoftGl ? (isWordEnd ? 8 : 4) : isWordEnd ? 14 : 7;
+    const trail = this.look.trail || 'sparkle';
+    const rainbowCols = [0xff5fd2, 0x38bdf8, 0x3fd67a, 0xffc53d, 0xa855f7];
+
+    for (let i = 0; i < count; i++) {
+      let col = 0xfde047;
+      if (trail === 'bubble') col = 0x67e8f9;
+      else if (trail === 'fire') col = i % 2 === 0 ? 0xf97316 : 0xfacc15;
+      else if (trail === 'aurora') col = i % 2 === 0 ? 0x34d399 : 0x38bdf8;
+      else if (trail === 'rainbow') col = rainbowCols[i % rainbowCols.length];
+      else if (combo >= 30) col = 0xff5fd2;
+      else if (combo >= 20) col = 0xffc53d;
+      else if (combo >= 10) col = 0x3fd67a;
+
+      const geo = trail === 'bubble' ? this.bubbleGeo : this.particleGeo;
+      const mat = new THREE.MeshBasicMaterial({
+        color: col,
+        transparent: true,
+        opacity: 0.92,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(
+        origin.x + (Math.random() - 0.5) * 0.7,
+        origin.y + 0.12 + Math.random() * 0.25,
+        origin.z + (Math.random() - 0.5) * 0.7
+      );
+      const angle = Math.random() * Math.PI * 2;
+      const speed = (isWordEnd ? 2.4 : 1.5) + Math.random() * 1.8;
+      const life = 0.42 + Math.random() * 0.35;
+      this.scene.add(mesh);
+      this.trailParticles.push({
+        mesh,
+        vx: Math.cos(angle) * speed,
+        vy: 1.8 + Math.random() * (isWordEnd ? 3.2 : 2.1),
+        vz: Math.sin(angle) * speed,
+        rx: (Math.random() - 0.5) * 8,
+        ry: (Math.random() - 0.5) * 8,
+        life,
+        maxLife: life,
+      });
+    }
+  }
+
+  public setGhost(times: number[]) {
+    this.ghostTimes = times;
+    this.ghostGroup.visible = true;
+  }
+
+  public setViewport(w: number, h: number, insets: Insets) {
+    this.w = Math.max(1, w);
+    this.h = Math.max(1, h);
+    this.insets = insets;
+    this.renderer.setSize(this.w, this.h, false);
+    applyFraming(this.cam, this.w, this.h, this.insets);
+  }
+
+  public start() {
+    if (!this.started) {
+      this.started = true;
+      this.runStartMs = performance.now();
+    }
+  }
+
+  public correct(typed: number, combo: number) {
+    this.typed = typed;
+    const idx = typed - 1;
+    const blk = this.blocks[idx];
+    if (blk) {
+      blk.typed = true;
+      blk.mat.opacity = 1;
+      blk.rimMat.opacity = 1;
+      blk.capMat.opacity = 1;
+      blk.topMat.opacity = 1;
+      blk.ringMesh.visible = false;
+
+      // Apply vibrant combo-tier color & emissive bloom on locked block
+      const tierIdx = Math.min(3, Math.floor(combo / 10));
+      const tierCol = new THREE.Color(tierIdx > 0 ? TIER_HEX[tierIdx] : this.world.block);
+      if (blk.ch !== ' ') {
+        blk.mat.color.copy(tierCol);
+        blk.mat.emissive.copy(tierCol).multiplyScalar(0.28);
+        blk.capMat.color.copy(tierCol).multiplyScalar(0.86);
+        blk.rimMat.color.copy(tierCol).multiplyScalar(0.42);
+      } else {
+        blk.mat.color.setHex(0x0284c7);
+        blk.mat.emissive.setHex(0x0369a1);
+        blk.capMat.color.setHex(0x0369a1);
+      }
+
+      // Snappy mechanical keycap press & spring bounce that settles flush at y = 0
+      blk.y = -0.14;
+      blk.vy = 1.8;
+      blk.scale = 1.18;
+      blk.rotX = 0;
+      blk.rotZ = 0;
+
+      const isWordEnd = blk.ch === ' ';
+      this.spawnTrailBurst(blk.basePos, combo, isWordEnd);
+
+      // Send a bounded ripple wave to adjacent blocks ahead and behind
+      for (let off = 1; off <= 3; off++) {
+        const nextB = this.blocks[idx + off];
+        if (nextB) {
+          nextB.vy = Math.min(0.65, nextB.vy + 0.35 / off);
+          nextB.scale = Math.max(nextB.scale, 1 + 0.06 / off);
+        }
+      }
+      if (isWordEnd) {
+        for (let back = 1; back <= 5; back++) {
+          const prevB = this.blocks[idx - back];
+          if (prevB) {
+            prevB.vy = Math.min(0.55, prevB.vy + 0.35 * (1 - back * 0.15));
+            prevB.scale = 1.06;
+          }
+        }
+      }
+
+      // Anchor jump origin to the previous block so rapid typing stays centered on the path
+      const prevBlockPos =
+        idx > 0 ? this.posFor(idx - 1) : new THREE.Vector3(-STEP_X, 0, -STEP_Z);
+      if (this.jumpT < 1) {
+        this.charPos.copy(prevBlockPos);
+      }
+      this.charFrom.copy(this.charPos);
+      this.charTo.copy(this.posFor(idx));
+      this.jumpT = 0;
+      this.jumpSpin = isWordEnd || combo >= 20 ? Math.PI * 2 : 0;
+    }
+  }
+
+  public miss() {
+    this.shakeT = 0.28;
+    const target = this.blocks[this.typed];
+    if (target) {
+      target.vy = 1.8;
+      target.scale = 1.15;
+      target.rotZ = (Math.random() > 0.5 ? 1 : -1) * 0.32;
+      target.mat.emissive.setHex(0xef4444);
+    }
   }
 
   private scheduleNextFrame() {
     if (this.disposed) return;
-    if (isSoftwareGl) {
-      const gl = this.renderer.getContext() as WebGL2RenderingContext | null;
-      if (gl && typeof gl.fenceSync === 'function') {
-        const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-        gl.flush();
-        const poll = () => {
-          if (this.disposed) return;
-          const state = sync && gl.getSyncParameter(sync, gl.SYNC_STATUS);
-          if (state === gl.UNSIGNALED) {
-            this.timerId = window.setTimeout(poll, 5);
-          } else {
-            if (sync) gl.deleteSync(sync);
-            this.timerId = window.setTimeout(this.loop, 80);
-          }
-        };
-        this.timerId = window.setTimeout(poll, 5);
-      } else {
-        this.timerId = window.setTimeout(this.loop, 80);
-      }
+    if (this.isSoftGl) {
+      this.timerId = window.setTimeout(() => {
+        this.raf = requestAnimationFrame(() => this.tick());
+      }, 16);
     } else {
-      this.raf = requestAnimationFrame(this.loop);
+      this.raf = requestAnimationFrame(() => this.tick());
     }
   }
 
-  setupWorld() {
-    const w = this.world;
-    this.scene.fog = new THREE.Fog(w.fog, 18, 60);
-    // Start island
-    const start = this.makeIsland(4.2, true);
-    start.position.set(-STEP * 2.6, -0.2, 0);
-    this.islands.add(start);
-    // Decorative distant islands
-    for (let i = 0; i < 26; i++) {
-      const isl = this.makeIsland(1.1 + Math.random() * 2.5, false);
-      const side = Math.random() < 0.5 ? -1 : 1;
-      isl.position.set(
-        i * 9 - 10 + Math.random() * 6,
-        -3 + Math.random() * 6,
-        side * (7 + Math.random() * 14)
-      );
-      isl.userData.bob = Math.random() * 6;
-      this.islands.add(isl);
-    }
-    // Ambient world particles
-    if (w.particles !== 'none') {
-      const n = 380;
-      const pos = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) {
-        pos[i * 3] = Math.random() * 60 - 20;
-        pos[i * 3 + 1] = Math.random() * 20 - 5;
-        pos[i * 3 + 2] = Math.random() * 40 - 20;
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      const colorMap: Record<string, string> = {
-        petals: '#ffb3d9',
-        snow: '#ffffff',
-        stars: '#fff6c8',
-        embers: '#ff8533',
-        fireflies: '#a7f3d0',
-        bubbles: '#7dd3fc',
-      };
-      const color = colorMap[w.particles] || '#ffffff';
-      const size = w.particles === 'stars' ? 0.13 : w.particles === 'bubbles' ? 0.2 : 0.18;
-      this.ambient = new THREE.Points(
-        geo,
-        new THREE.PointsMaterial({
-          color,
-          size,
-          transparent: true,
-          opacity: 0.9,
-          fog: w.particles !== 'stars',
-        })
-      );
-      this.scene.add(this.ambient);
-    }
-  }
-
-  makeIsland(r: number, main: boolean) {
-    const g = new THREE.Group();
-    const top = new THREE.Mesh(
-      new THREE.CylinderGeometry(r, r * 0.95, 0.5, 7),
-      new THREE.MeshStandardMaterial({ color: this.world.grass, roughness: 0.85, flatShading: true })
-    );
-    top.receiveShadow = !isSoftwareGl;
-    g.add(top);
-
-    const rock = new THREE.Mesh(
-      new THREE.ConeGeometry(r * 0.95, r * 1.65, 7),
-      new THREE.MeshStandardMaterial({ color: this.world.island, roughness: 0.95, flatShading: true })
-    );
-    rock.rotation.x = Math.PI;
-    rock.position.y = -0.25 - r * 0.82;
-    g.add(rock);
-
-    const count = main ? 3 : Math.floor(Math.random() * 3) + 1;
-    const wid = this.world.id;
-
-    for (let i = 0; i < count; i++) {
-      const prop = new THREE.Group();
-
-      if (wid === 'sunset') {
-        // Sandstone desert pyramid or saguaro cactus
-        if (i === 0 && r > 1.8) {
-          const pyr = new THREE.Mesh(
-            new THREE.ConeGeometry(0.65, 1.1, 4),
-            new THREE.MeshStandardMaterial({ color: '#e08e45', roughness: 0.8, flatShading: true })
-          );
-          pyr.position.y = 0.55;
-          prop.add(pyr);
-        } else {
-          const cactusMat = new THREE.MeshStandardMaterial({ color: '#2d8a4e', roughness: 0.7 });
-          const stem = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.65, 4, 8), cactusMat);
-          stem.position.y = 0.4;
-          prop.add(stem);
-          const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.25, 4, 8), cactusMat);
-          arm.position.set(0.16, 0.48, 0);
-          arm.rotation.z = -0.5;
-          prop.add(arm);
-        }
-      } else if (wid === 'bamboo') {
-        // Tall segmented bamboo stalks or red torii gate
-        if (main && i === 0) {
-          const gateMat = new THREE.MeshStandardMaterial({ color: '#dc2626', roughness: 0.5 });
-          for (const s of [-0.35, 0.35]) {
-            const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.1, 8), gateMat);
-            pillar.position.set(s, 0.55, 0);
-            prop.add(pillar);
-          }
-          const lintel = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.1, 0.14), gateMat);
-          lintel.position.set(0, 1.08, 0);
-          prop.add(lintel);
-        } else {
-          const bamMat = new THREE.MeshStandardMaterial({ color: '#059669', roughness: 0.45 });
-          const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 1.35, 8), bamMat);
-          stalk.position.y = 0.67;
-          prop.add(stalk);
-          const foliage = new THREE.Mesh(
-            new THREE.DodecahedronGeometry(0.32, 0),
-            new THREE.MeshStandardMaterial({ color: '#6ee7b7', flatShading: true })
-          );
-          foliage.position.y = 1.35;
-          prop.add(foliage);
-        }
-      } else if (wid === 'volcano') {
-        // Jagged obsidian crystal spires with glowing magma veins
-        const spire = new THREE.Mesh(
-          new THREE.ConeGeometry(0.28, 1.15, 5),
-          new THREE.MeshStandardMaterial({
-            color: '#1c1917',
-            emissive: '#dc2626',
-            emissiveIntensity: 0.35,
-            roughness: 0.3,
-            metalness: 0.5,
-            flatShading: true,
-          })
-        );
-        spire.position.y = 0.55;
-        spire.rotation.z = (Math.random() - 0.5) * 0.25;
-        prop.add(spire);
-      } else if (wid === 'ocean') {
-        // Bioluminescent coral branches & glowing sea pearls
-        const coralCol = i % 2 === 0 ? '#f472b6' : '#22d3ee';
-        const coral = new THREE.Mesh(
-          new THREE.TorusKnotGeometry(0.22, 0.06, 24, 6),
-          new THREE.MeshStandardMaterial({
-            color: coralCol,
-            emissive: coralCol,
-            emissiveIntensity: 0.3,
-            roughness: 0.35,
-          })
-        );
-        coral.position.y = 0.45;
-        prop.add(coral);
-      } else if (wid === 'cosmic') {
-        // Ringed mini-planetoid or astral monolith
-        const orb = new THREE.Mesh(
-          new THREE.IcosahedronGeometry(0.34, 1),
-          new THREE.MeshStandardMaterial({
-            color: '#a78bfa',
-            emissive: '#6d28d9',
-            emissiveIntensity: 0.35,
-            roughness: 0.25,
-            metalness: 0.4,
-          })
-        );
-        orb.position.y = 0.72;
-        prop.add(orb);
-        const ring = new THREE.Mesh(
-          new THREE.TorusGeometry(0.52, 0.03, 8, 24),
-          new THREE.MeshStandardMaterial({ color: '#fde047', roughness: 0.3, metalness: 0.6 })
-        );
-        ring.position.y = 0.72;
-        ring.rotation.x = 1.1;
-        prop.add(ring);
-      } else {
-        // Sky, Neon, Ice classic stylized trees
-        const trunk = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.08, 0.11, 0.52),
-          new THREE.MeshStandardMaterial({ color: wid === 'neon' ? '#1e1b4b' : '#8a5a3c' })
-        );
-        trunk.position.y = 0.26;
-        prop.add(trunk);
-        const leafC =
-          wid === 'neon' ? '#ff3df2' : wid === 'ice' ? '#e0f2fe' : '#ff9fcf';
-        const leaf = new THREE.Mesh(
-          wid === 'ice' ? new THREE.ConeGeometry(0.45, 0.95, 6) : new THREE.IcosahedronGeometry(0.45, 0),
-          new THREE.MeshStandardMaterial({
-            color: leafC,
-            emissive: wid === 'neon' ? '#ff2ced' : '#000000',
-            emissiveIntensity: wid === 'neon' ? 0.25 : 0,
-            flatShading: true,
-          })
-        );
-        leaf.position.y = 0.82;
-        prop.add(leaf);
-      }
-
-      const a = (i / count) * Math.PI * 2 + Math.random() * 0.5;
-      const d = (0.25 + Math.random() * 0.35) * r;
-      prop.position.set(Math.cos(a) * d, 0.25, Math.sin(a) * d + (main ? -1.4 : 0));
-      prop.traverse(o => {
-        if ((o as THREE.Mesh).isMesh) o.castShadow = !isSoftwareGl;
-      });
-      g.add(prop);
-    }
-    return g;
-  }
-
-  setViewport(w: number, h: number, insets: Insets) {
-    if (!(w > 0 && h > 0)) return;
-    const dpr = isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2);
-    const key = [w, h, dpr, insets.top, insets.right, insets.bottom, insets.left]
-      .map(n => Math.round(n * 4) / 4)
-      .join();
-    if (key === this.viewKey) return;
-    this.viewKey = key;
-    this.renderer.setPixelRatio(dpr);
-    this.renderer.setSize(w, h, false);
-    this.framing = frameView(w, h, insets);
-    applyFraming(this.camera, this.framing, w, h, insets);
-    const fog = this.scene.fog as THREE.Fog;
-    fog.near = this.framing.dist + 7.5;
-    fog.far = this.framing.dist + 49.5;
-    this.clearSightLines();
-    this.render();
-  }
-
-  clearSightLines() {
-    const [, camY, camZ] = this.framing.offset;
-    const sight = (z: number) => -0.4 + ((camY + 0.4) * Math.max(0, z - 0.85)) / (camZ - 0.85);
-    for (const isl of this.islands.children) {
-      if (isl.userData.bob === undefined || isl.position.z < 0) continue;
-      const r = ((isl.children[0] as THREE.Mesh).geometry as THREE.CylinderGeometry).parameters
-        .radiusTop;
-      const z = isl.position.z;
-      if (z - r >= camZ) continue;
-      const maxY = Math.min(sight(z - r) - 0.25, sight(z - 0.6 * r - 0.45) - 1.5) - 1;
-      if (isl.position.y > maxY) isl.position.y = maxY;
-    }
-  }
-
-  setText(text: string, typed = 0) {
-    this.text = text;
-    this.typed = typed;
-    this.ensureBlocks();
-    if (this.finishFlag) this.scene.remove(this.finishFlag);
-    if (this.showFinish) {
-      const f = new THREE.Group();
-      const pole = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.05, 0.05, 2.4),
-        new THREE.MeshStandardMaterial({ color: '#ffffff', metalness: 0.4, roughness: 0.3 })
-      );
-      pole.position.y = 1.2;
-      f.add(pole);
-      const c = document.createElement('canvas');
-      c.width = 64;
-      c.height = 32;
-      const x = c.getContext('2d')!;
-      for (let i = 0; i < 8; i++) {
-        for (let j = 0; j < 4; j++) {
-          x.fillStyle = (i + j) % 2 ? '#1e293b' : '#ffffff';
-          x.fillRect(i * 8, j * 8, 8, 8);
-        }
-      }
-      const flagTex = new THREE.CanvasTexture(c);
-      flagTex.colorSpace = THREE.SRGBColorSpace;
-      const flag = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.2, 0.6),
-        new THREE.MeshStandardMaterial({ map: flagTex, side: THREE.DoubleSide })
-      );
-      flag.position.set(0.6, 2.05, 0);
-      f.add(flag);
-      f.userData.flag = flag;
-      const plat = this.makeIsland(2.1, false);
-      plat.position.set(1.6, -0.2, 0);
-      f.add(plat);
-      f.position.set(text.length * STEP + 0.4, 0, -0.9);
-      this.scene.add(f);
-      this.finishFlag = f;
-    }
-  }
-
-  appendText(more: string) {
-    this.text += more;
-    this.ensureBlocks();
-  }
-
-  setGhost(times: number[] | null) {
-    this.ghostTimes = times;
-    if (this.ghost) this.scene.remove(this.ghost);
-    this.ghost = undefined;
-    if (times) {
-      this.ghost = buildChar(this.look, true);
-      this.ghost.position.set(-STEP, 0.21, -0.45);
-      this.scene.add(this.ghost);
-    }
-  }
-
-  start() {
-    this.startTime = performance.now();
-  }
-
-  tierColor() {
-    const t = Math.min(3, Math.floor(this.combo / 10));
-    return t === 0 ? this.world.block : TIER_COLORS[t];
-  }
-
-  ensureBlocks() {
-    let end = this.typed;
-    let words = 0;
-    while (end < this.text.length && words < 2) {
-      if (this.text[end] === ' ') words++;
-      end++;
-    }
-    for (let i = Math.max(0, this.typed - 1); i < end; i++) {
-      if (!this.blocks.has(i)) this.spawnBlock(i);
-    }
-  }
-
-  spawnBlock(i: number) {
-    const ch = this.text[i];
-    const space = ch === ' ';
-    const mat = new THREE.MeshStandardMaterial({
-      color: space ? '#ffffff' : this.world.block,
-      roughness: 0.4,
-      metalness: 0.1,
-      transparent: true,
-      opacity: 0.58,
-      emissive: this.world.block,
-      emissiveIntensity: 0.16,
-    });
-    const g = new THREE.Group();
-    const m = new THREE.Mesh(space ? this.geoSpace : this.geoBlock, mat);
-    m.castShadow = !isSoftwareGl;
-    m.receiveShadow = !isSoftwareGl;
-    g.add(m);
-    let lmat: THREE.MeshBasicMaterial | undefined;
-    if (!space) {
-      lmat = new THREE.MeshBasicMaterial({
-        map: letterTex(ch, this.maxAnisotropy),
-        transparent: true,
-        opacity: 0.9,
-        depthWrite: false,
-      });
-      const l = new THREE.Mesh(this.geoLetter, lmat);
-      l.rotation.x = -Math.PI / 2;
-      l.rotation.z = -Math.PI / 2;
-      l.position.y = 0.215;
-      g.add(l);
-    }
-    const x = i * STEP;
-    const ahead = Math.max(0, i - this.typed);
-    g.position.set(x, 1.2 + ahead * 0.06, 0);
-    const seed = Math.random() * 10;
-    g.rotation.set(
-      (Math.random() - 0.5) * 0.35,
-      (Math.random() - 0.5) * 0.35,
-      (Math.random() - 0.5) * 0.35
-    );
-    // Initial blocks at track start spawn at 0.96 scale so they are immediately visible on first frame
-    g.scale.setScalar(this.typed === 0 ? 0.96 : 0.15);
-    this.scene.add(g);
-    this.blocks.set(i, { g, mat, placed: false, t: 0, x, seed, pulse: 0, lmat });
-  }
-
-  correct(typedNow: number, combo: number) {
-    this.combo = combo;
-    this.typed = typedNow;
-    const i = typedNow - 1;
-    if (!this.blocks.has(i)) this.spawnBlock(i);
-    const b = this.blocks.get(i)!;
-    b.placed = true;
-    b.t = 0;
-    const col = this.text[i] === ' ' ? '#ffffff' : this.tierColor();
-    b.mat.color.set(col);
-    b.mat.emissive.set(col);
-    b.mat.opacity = 1;
-    b.mat.transparent = false;
-    b.mat.emissiveIntensity = 0.52;
-    if (b.lmat) b.lmat.opacity = 1;
-
-    // Word completion ripple pulse across the word just typed
-    if (this.text[i] === ' ' || typedNow === this.text.length) {
-      let k = i - (this.text[i] === ' ' ? 1 : 0);
-      let d = 0;
-      while (k >= 0 && this.text[k] !== ' ') {
-        const bb = this.blocks.get(k);
-        if (bb) bb.pulse = 1 + d * 0.08;
-        k--;
-        d++;
-      }
-    }
-    this.fromX = this.char.position.x;
-    this.charX = i * STEP;
-    this.hopT = 0;
-    this.stumble = 0;
-    this.ensureBlocks();
-    this.emitTrail(combo);
-    // Cleanup distant blocks behind the runner
-    for (const [k, bb] of this.blocks) {
-      if (k < typedNow - 60) {
-        this.scene.remove(bb.g);
-        bb.mat.dispose();
-        bb.lmat?.dispose();
-        this.blocks.delete(k);
-      }
-    }
-  }
-
-  miss() {
-    this.combo = 0;
-    this.stumble = 1;
-  }
-
-  emitTrail(combo: number) {
-    const count = combo >= 30 ? 6 : combo >= 20 ? 4 : combo >= 10 ? 3 : 1;
-    const tr = this.look.trail;
-    for (let n = 0; n < count; n++) {
-      let color = '#ffffff';
-      if (tr === 'fire') color = ['#ff4d00', '#ffb000', '#ff7a00'][n % 3];
-      else if (tr === 'aurora') color = ['#34d399', '#22d3ee', '#a78bfa'][n % 3];
-      else if (tr === 'rainbow') color = `hsl(${Math.random() * 360},90%,65%)`;
-      else if (tr === 'bubble') color = '#bfefff';
-      else color = ['#fff7a8', '#ffffff', this.tierColor()][n % 3];
-
-      const m = new THREE.Mesh(
-        tr === 'bubble' ? this.bubbleGeo : this.pGeo,
-        new THREE.MeshBasicMaterial({
-          color,
-          transparent: true,
-          opacity: tr === 'bubble' ? 0.65 : 1,
-        })
-      );
-      m.position
-        .copy(this.char.position)
-        .add(new THREE.Vector3(-0.22, 0.5 + Math.random() * 0.5, (Math.random() - 0.5) * 0.5));
-      const v = new THREE.Vector3(
-        -1 - Math.random(),
-        tr === 'fire' || tr === 'bubble' || tr === 'aurora'
-          ? 1.5 + Math.random()
-          : Math.random() * 2,
-        (Math.random() - 0.5) * 2
-      );
-      this.scene.add(m);
-      this.particles.push({ m, v, life: 0, max: 0.6 + Math.random() * 0.5 });
-    }
-  }
-
-  loop = () => {
+  private tick() {
     if (this.disposed) return;
     const now = performance.now();
-    const dt = Math.min(Math.max(0.001, (now - this.lastTime) / 1000), 0.05);
-    this.lastTime = now;
-    this.elapsedTime += dt;
-    const t = this.elapsedTime;
-    const grav = this.world.gravity;
-    const speed = 1 + Math.min(this.combo, 40) / 40;
+    const dt = Math.min(0.05, Math.max(0.001, (now - this.lastMs) / 1000));
+    this.lastMs = now;
 
-    // Blocks animation
-    for (const [i, b] of this.blocks) {
-      if (b.placed) {
-        b.t = Math.min(1, b.t + dt * 11);
-        const e = 1 - Math.pow(1 - b.t, 3);
-        b.g.position.y += (0 - b.g.position.y) * Math.min(1, dt * 24);
-        b.g.rotation.x *= 1 - e;
-        b.g.rotation.y *= 1 - e;
-        b.g.rotation.z *= 1 - e;
-        const s = 1 + Math.sin(b.t * Math.PI) * 0.15 + b.pulse * 0.12;
-        b.g.scale.set(s, 1 + b.pulse * 0.5, s);
-        b.mat.emissiveIntensity += (0.08 + b.pulse * 0.4 - b.mat.emissiveIntensity) * dt * 4;
-        b.pulse = Math.max(0, b.pulse - dt * 3);
-      } else {
-        const sc = b.g.scale.x + (1 - b.g.scale.x) * Math.min(1, dt * 16);
-        b.g.scale.setScalar(sc);
-        const ahead = i - this.typed;
-        b.g.position.y = 1.2 + ahead * 0.06 + Math.sin(t * 2 * grav + b.seed) * 0.15;
-        b.g.rotation.y += dt * 0.3 * Math.sin(b.seed);
+    // Runner jump & limb animation
+    if (this.jumpT < 1) {
+      this.jumpT = Math.min(1, this.jumpT + dt * 7.8);
+      this.charPos.lerpVectors(this.charFrom, this.charTo, this.jumpT);
+      const arc = (Math.sin(this.jumpT * Math.PI) * 0.68) / Math.max(0.55, this.world.gravity);
+      this.charGroup.position.set(this.charPos.x, this.charPos.y + arc, this.charPos.z);
+
+      // Forward pitch + celebratory spin during jump
+      const stride = Math.sin(this.jumpT * Math.PI);
+      this.charGroup.rotation.z = -stride * 0.22;
+      this.charGroup.rotation.y = this.jumpSpin * this.jumpT;
+
+      if (this.leftLeg && this.rightLeg) {
+        this.leftLeg.rotation.z = stride * 0.65;
+        this.rightLeg.rotation.z = -stride * 0.65;
       }
-    }
-
-    // Character hop + squash-and-stretch + scarf flutter
-    const ud = this.char.userData as {
-      legs: THREE.Group[];
-      arms: THREE.Group[];
-      headGroup?: THREE.Group;
-      scarfPivot?: THREE.Group;
-      coreMat?: THREE.MeshStandardMaterial;
-    };
-
-    if (this.hopT < 1) {
-      this.hopT = Math.min(1, this.hopT + dt * 11 * speed * grav);
-      const x = this.fromX + (this.charX - this.fromX) * this.hopT;
-      const arc = Math.sin(this.hopT * Math.PI);
-      const y = 0.21 + (arc * 0.36) / grav;
-      this.char.position.set(x, y, 0);
-      // Subtle squash and stretch on hop arc
-      const stretchY = 1 + arc * 0.08;
-      const squashXZ = 1 - arc * 0.04;
-      this.char.scale.set(squashXZ, stretchY, squashXZ);
-      if (this.hopT >= 1) {
-        this.char.scale.set(1, 1, 1);
-        this.onStep?.();
+      if (this.leftArm && this.rightArm) {
+        this.leftArm.rotation.z = -stride * 0.75;
+        this.rightArm.rotation.z = stride * 0.75;
       }
-      this.runPhase += dt * 18 * speed;
+
+      if (this.jumpT >= 1) {
+        this.charGroup.rotation.z = 0;
+        this.charGroup.rotation.y = 0;
+        if (this.onStep) this.onStep();
+      }
     } else {
-      this.char.position.y = 0.21;
-      this.char.scale.lerp(new THREE.Vector3(1, 1, 1), Math.min(1, dt * 14));
-      this.runPhase *= 0.9;
-    }
-    if (this.char.position.x < -STEP * 0.9 && this.hopT >= 1) this.char.position.x = -STEP;
-
-    const sw = Math.sin(this.runPhase) * (this.hopT < 1 ? 0.85 : 0.05);
-    ud.legs[0].rotation.z = sw;
-    ud.legs[1].rotation.z = -sw;
-    ud.arms[0].rotation.z = -sw;
-    ud.arms[1].rotation.z = sw;
-
-    if (ud.scarfPivot) {
-      ud.scarfPivot.rotation.z =
-        0.15 + Math.sin(t * 10 * speed) * (this.hopT < 1 ? 0.35 : 0.08);
-    }
-    if (ud.coreMat) {
-      ud.coreMat.color.set(this.tierColor());
-      ud.coreMat.emissive.set(this.tierColor());
-      ud.coreMat.emissiveIntensity = 0.5 + Math.min(this.combo, 30) * 0.04;
-    }
-
-    this.stumble = Math.max(0, this.stumble - dt * 2.5);
-    this.char.rotation.z = -Math.sin(this.stumble * Math.PI * 3) * 0.25 * this.stumble;
-    this.char.rotation.y = 0;
-    this.char.position.y += Math.sin(t * 3) * 0.01;
-
-    // Ghost runner
-    if (this.ghost && this.ghostTimes && this.startTime) {
-      const el = performance.now() - this.startTime;
-      let idx = 0;
-      while (idx < this.ghostTimes.length && this.ghostTimes[idx] <= el) idx++;
-      const target = (idx - 1) * STEP;
-      const prev = this.ghostX;
-      this.ghostX += (target - this.ghostX) * Math.min(1, dt * 14);
-      const moving = Math.abs(target - prev) > 0.02;
-      this.ghost.position.set(
-        this.ghostX,
-        0.21 + (moving ? Math.abs(Math.sin(t * 16)) * 0.25 : 0),
-        -0.45
-      );
-      const gud = this.ghost.userData as { legs: THREE.Group[] };
-      const gs = moving ? Math.sin(t * 16) * 0.8 : 0;
-      gud.legs[0].rotation.z = gs;
-      gud.legs[1].rotation.z = -gs;
-    }
-
-    // Trail particles
-    for (let k = this.particles.length - 1; k >= 0; k--) {
-      const p = this.particles[k];
-      p.life += dt;
-      p.m.position.addScaledVector(p.v, dt);
-      if (this.look.trail !== 'fire' && this.look.trail !== 'bubble' && this.look.trail !== 'aurora') {
-        p.v.y -= dt * 4 * grav;
+      const idleBob = Math.sin(now * 0.005) * 0.04;
+      this.charGroup.position.set(this.charPos.x, this.charPos.y + idleBob, this.charPos.z);
+      this.charGroup.rotation.z = Math.sin(now * 0.003) * 0.025;
+      this.charGroup.rotation.y = 0;
+      if (this.leftLeg && this.rightLeg) {
+        this.leftLeg.rotation.z *= 0.82;
+        this.rightLeg.rotation.z *= 0.82;
       }
-      p.m.rotation.x += dt * 5;
-      p.m.rotation.y += dt * 4;
-      const f = 1 - p.life / p.max;
-      p.m.scale.setScalar(Math.max(0.01, f));
-      if (p.life >= p.max) {
-        this.scene.remove(p.m);
-        (p.m.material as THREE.Material).dispose();
-        this.particles.splice(k, 1);
+      if (this.leftArm && this.rightArm) {
+        this.leftArm.rotation.z = Math.sin(now * 0.004) * 0.08;
+        this.rightArm.rotation.z = -Math.sin(now * 0.004) * 0.08;
       }
     }
-    if (this.combo >= 20 && Math.random() < 0.3) this.emitTrailIdle();
 
-    // Ambient world particles (petals, snow, stars, embers, fireflies, bubbles)
-    if (this.ambient) {
-      const pos = this.ambient.geometry.attributes.position as THREE.BufferAttribute;
-      const pKind = this.world.particles;
-      const vy =
-        pKind === 'stars' || pKind === 'fireflies'
-          ? 0
-          : pKind === 'embers' || pKind === 'bubbles'
-            ? 0.85
-            : pKind === 'snow'
-              ? -1.2
-              : -0.6;
-      for (let i = 0; i < pos.count; i++) {
-        let y = pos.getY(i) + vy * dt + (pKind === 'fireflies' ? Math.sin(t * 2 + i) * dt * 0.4 : 0);
-        let x = pos.getX(i) + Math.sin(t + i) * dt * 0.35;
-        if (vy < 0 && y < -6) y = 14;
-        if (vy > 0 && y > 14) y = -6;
-        if (x < this.camX - 25) x += 60;
-        pos.setXY(i, x, y);
-      }
-      pos.needsUpdate = true;
+    if (this.scarfMesh) {
+      this.scarfMesh.rotation.z =
+        0.22 + Math.sin(now * 0.012) * 0.18 + (this.jumpT < 1 ? 0.25 : 0);
     }
 
-    // Islands bob & recycle
-    for (const isl of this.islands.children) {
-      if (isl.userData.bob !== undefined) {
-        isl.position.y += Math.sin(t * 0.6 * grav + isl.userData.bob) * dt * 0.15;
-        if (isl.position.x < this.camX - 30) isl.position.x += 234;
+    // Update visible window of blocks with floating wave & spring physics
+    const lo = Math.max(0, this.typed - 9);
+    const hi = Math.min(this.blocks.length, this.typed + 16);
+    for (let i = 0; i < this.blocks.length; i++) {
+      const b = this.blocks[i];
+      const vis = i >= lo && i < hi;
+      if (vis && !b.group.visible) {
+        // Newly revealed horizon block rises up & pops in from the clouds
+        b.y = -1.6;
+        b.vy = 2.8;
+        b.scale = 0.08;
+        b.rotZ = 0.28;
       }
+      b.group.visible = vis;
+      if (!vis) continue;
+
+      const isCurrent = i === this.typed;
+      const isPast = i < this.typed;
+
+      // Target Y: past blocks lock flat at y=0; upcoming blocks float & bob in a gentle wave
+      const floatWave = isPast
+        ? 0
+        : isCurrent
+          ? 0.06 + Math.sin(now * 0.007) * 0.05
+          : 0.1 + Math.sin(now * 0.0036 + i * 0.55) * 0.12;
+
+      // Spring physics towards target Y
+      const forceY = (floatWave - b.y) * 38;
+      b.vy += forceY * dt;
+      b.vy *= Math.pow(0.1, dt);
+      b.y += b.vy * dt;
+
+      // Target Scale: current target block pulses gently; typed & upcoming blocks settle smoothly
+      const targetScale = isPast
+        ? 1
+        : isCurrent
+          ? 1.05 + Math.sin(now * 0.008) * 0.035
+          : 0.95;
+      b.scale += (targetScale - b.scale) * Math.min(1, dt * 14);
+
+      // Gentle 3D floating tilt on untyped sky blocks; locked flat on typed bridge blocks
+      if (isPast) {
+        b.rotX *= Math.pow(0.02, dt);
+        b.rotZ *= Math.pow(0.02, dt);
+      } else {
+        const targetRotX = Math.cos(now * 0.0024 + i * 0.5) * (isCurrent ? 0.025 : 0.06);
+        const targetRotZ = Math.sin(now * 0.0028 + i * 0.65) * (isCurrent ? 0.025 : 0.07);
+        b.rotX += (targetRotX - b.rotX) * Math.min(1, dt * 8);
+        b.rotZ += (targetRotZ - b.rotZ) * Math.min(1, dt * 8);
+      }
+
+      // Target beacon halo ring on the current expected block
+      b.ringMesh.visible = isCurrent;
+      if (isCurrent) {
+        const pulse = 0.96 + Math.sin(now * 0.01) * 0.07;
+        b.ringMesh.scale.setScalar(pulse);
+        b.ringMat.opacity = 0.65 + Math.sin(now * 0.01) * 0.3;
+      }
+
+      b.group.position.y = b.basePos.y + b.y;
+      b.group.scale.setScalar(b.scale);
+      b.meshGroup.rotation.set(b.rotX, 0, b.rotZ);
     }
-    if (this.finishFlag) {
-      const fl = this.finishFlag.userData.flag as THREE.Mesh;
-      fl.rotation.y = Math.sin(t * 3) * 0.2;
+
+    // Ambient world particles drift
+    if (this.ambientMesh) {
+      this.ambientMesh.rotation.y = now * 0.00008;
+      this.ambientMesh.position.x = this.charPos.x * 0.7;
+      this.ambientMesh.position.z = this.charPos.z * 0.7;
+    }
+
+    // Ghost runner interpolation
+    if (this.started && this.ghostTimes && this.ghostTimes.length > 0) {
+      const elapsed = now - this.runStartMs;
+      let gIdx = 0;
+      while (gIdx < this.ghostTimes.length && this.ghostTimes[gIdx] <= elapsed) gIdx++;
+      const gp = gIdx > 0 ? this.posFor(gIdx - 1) : new THREE.Vector3(-STEP_X, 0, -STEP_Z);
+      this.ghostGroup.position.lerp(gp, Math.min(1, dt * 10));
     }
 
     // Camera follow
-    this.camX += (this.char.position.x - this.camX) * Math.min(1, dt * 3 * speed);
-    this.zoom += (Math.min(this.combo, 40) / 40 - this.zoom) * Math.min(1, dt * 4);
-    this.render();
-    this.scheduleNextFrame();
-  };
+    const shakeX = this.shakeT > 0 ? (Math.random() - 0.5) * 0.28 : 0;
+    this.shakeT = Math.max(0, this.shakeT - dt);
 
-  render() {
-    placeCamera(this.camera, this.framing, this.camX, this.zoom);
-    const sun = this.scene.userData.sun as THREE.DirectionalLight;
-    sun.position.set(this.camX - 4, 10, 6);
-    sun.target.position.set(this.camX + 2, 0, 0);
-    this.renderer.render(this.scene, this.camera);
-  }
-
-  emitTrailIdle() {
-    const m = new THREE.Mesh(
-      this.pGeo,
-      new THREE.MeshBasicMaterial({ color: this.tierColor(), transparent: true })
+    const targetCam = new THREE.Vector3(
+      this.charPos.x + 2.8 + shakeX,
+      this.charPos.y + 4.8,
+      this.charPos.z + 7.4
     );
-    m.position
-      .copy(this.char.position)
-      .add(new THREE.Vector3(-0.3, 0.6 + Math.random() * 0.6, (Math.random() - 0.5) * 0.6));
-    this.scene.add(m);
-    this.particles.push({ m, v: new THREE.Vector3(-1.5, 0.3, 0), life: 0, max: 0.5 });
+    this.cam.position.lerp(targetCam, Math.min(1, dt * 8));
+    this.cam.lookAt(this.charPos.x + 2.4, this.charPos.y + 0.5, this.charPos.z - 0.6);
+
+    // Update trail burst particles
+    for (let i = this.trailParticles.length - 1; i >= 0; i--) {
+      const p = this.trailParticles[i];
+      p.life -= dt;
+      if (p.life <= 0) {
+        this.scene.remove(p.mesh);
+        (p.mesh.material as THREE.Material).dispose();
+        this.trailParticles.splice(i, 1);
+      } else {
+        p.vy -= 5.2 * dt;
+        p.mesh.position.x += p.vx * dt;
+        p.mesh.position.y += p.vy * dt;
+        p.mesh.position.z += p.vz * dt;
+        p.mesh.rotation.x += p.rx * dt;
+        p.mesh.rotation.y += p.ry * dt;
+        const ratio = Math.max(0.01, p.life / p.maxLife);
+        p.mesh.scale.setScalar(ratio);
+      }
+    }
+
+    this.renderer.render(this.scene, this.cam);
+    this.scheduleNextFrame();
   }
 
-  dispose() {
+  public dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     clearTimeout(this.timerId);
+    for (const p of this.trailParticles) {
+      this.scene.remove(p.mesh);
+      (p.mesh.material as THREE.Material).dispose();
+    }
+    this.trailParticles = [];
+    this.bodyGeo.dispose();
+    this.rimGeo.dispose();
+    this.capGeo.dispose();
+    this.topPlaneGeo.dispose();
+    this.ringGeo.dispose();
+    this.particleGeo.dispose();
+    this.bubbleGeo.dispose();
     this.renderer.dispose();
   }
 }

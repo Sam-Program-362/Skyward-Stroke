@@ -44,15 +44,10 @@ test('applyPlaySettingsToLine injects allowed punctuation (, . \' & - ? !) when 
     'slow hands and calm minds make smooth music',
   ];
   const combined = formatTrackLines(lines, settings);
-  // Should include '&' from 'and' replacement
   assert.equal(combined.includes('&'), true);
-  // Should include '-' from 'Step-by-step'
   assert.equal(combined.toLowerCase().includes('step-by-step'), true);
-  // Should include apostrophe "'"
   assert.equal(combined.includes("'"), true);
-  // Should include comma ','
   assert.equal(combined.includes(','), true);
-  // Should end with one of '.', '!', '?'
   assert.equal(/[.!?]$/.test(combined), true);
 });
 
@@ -126,24 +121,20 @@ test('getPlayerRank scales rank titles with level and WPM', () => {
 });
 
 test('resolveVirtualKeyboardState handles uppercase auto-shift, manual shift, and punctuation targets', () => {
-  // Auto-shift when expected char is 'S'
   const autoUpper = resolveVirtualKeyboardState('S', 'off', true);
   assert.equal(autoUpper.isShifted, true);
   assert.equal(autoUpper.targetKey, 'S');
   assert.equal(autoUpper.needsShiftTap, false);
 
-  // Manual shift needed when auto-shift is off and expected char is 'S'
   const manualNeeded = resolveVirtualKeyboardState('S', 'off', false);
   assert.equal(manualNeeded.isShifted, false);
   assert.equal(manualNeeded.needsShiftTap, true);
   assert.equal(manualNeeded.targetKey, 's');
 
-  // Punctuation target
   const punct = resolveVirtualKeyboardState('&', 'off', true);
   assert.equal(punct.isShifted, false);
   assert.equal(punct.targetKey, '&');
 
-  // Digit target
   const digit = resolveVirtualKeyboardState('7', 'off', true);
   assert.equal(digit.needsNumberLayer, true);
   assert.equal(digit.targetKey, '7');
