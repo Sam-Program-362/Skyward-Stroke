@@ -430,6 +430,7 @@ function shuffled<T>(a: T[]) {
 }
 
 const decks = new Map<string, string[]>();
+/** Deal `n` lines from a world's shuffled deck, so nothing repeats until every line has come up. */
 export function drawLines(world: World, n: number): string[] {
   let deck = decks.get(world.id) ?? [];
   const out: string[] = [];
@@ -441,15 +442,18 @@ export function drawLines(world: World, n: number): string[] {
   return out;
 }
 
+/** Text for a fresh Journey / Ghost track, formatted with the player's PlaySettings. */
 export const trackText = (world: World, settings: PlaySettings = DEFAULT_PLAY_SETTINGS) => {
   const count = settings.linesPerTrack || LINES_PER_TRACK;
   const rawLines = drawLines(world, count);
   return formatTrackLines(rawLines, settings);
 };
 
+/** Text that ghosts saved without their own text were recorded on. */
 export const legacyTrackText = (world: World) => world.prompts.slice(0, 3).join(' ');
 
 let zenCounter = 0;
+/** Next stretch of Zen mode: one of the world's lines, or a handful of loose words, formatted with PlaySettings. */
 export function zenChunk(world: World, settings: PlaySettings = DEFAULT_PLAY_SETTINGS): string {
   zenCounter++;
   if (Math.random() < 0.55) {
@@ -497,6 +501,7 @@ export interface Look {
   trail: string;
 }
 
+/** A personal-best run: when each letter landed (ms), and the text it was typed on. */
 export interface Ghost {
   times: number[];
   wpm: number;

@@ -17,6 +17,14 @@ export interface KeyMetrics {
 const ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
 const NUM_ROW = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 
+/**
+ * Built-in Virtual Keyboard for touch screens, tablets, and emulators.
+ * Always provides:
+ * - Punctuation bar (, . ' & - ? !) + 123 number row toggle
+ * - Uppercase Shift (⇧ / ⇪ Caps) + Smart Auto-Shift when prompt expects A–Z
+ * - Next-key target highlight so uppercase and punctuation keys are immediately clear
+ * - Quick switch to Native OS Keyboard for mobile users
+ */
 export default function Keyboard({
   onKey,
   onHide,
@@ -98,6 +106,7 @@ export default function Keyboard({
       style={vars}
       onContextMenu={e => e.preventDefault()}
     >
+      {/* Row 0: Always-available Punctuation (, . ' & - ? !) + 123 Toggle + Auto-Shift Toggle */}
       <div className="kb-row kb-row-punct">
         <button
           type="button"
@@ -144,16 +153,19 @@ export default function Keyboard({
         )}
       </div>
 
+      {/* Optional Numbers Row (1 2 3 4 5 6 7 8 9 0) when 123 is toggled or numbers are active */}
       {displayNumbers && (
         <div className="kb-row kb-row-num">{NUM_ROW.map(d => key(d, 'kb-num'))}</div>
       )}
 
+      {/* Main QWERTY Rows (automatically displays A–Z when shifted or Auto-Shifted) */}
       {ROWS.map(row => (
         <div key={row} className={`kb-row kb-row-${row.length}`}>
           {row.split('').map(k => key(k))}
         </div>
       ))}
 
+      {/* Bottom Row: Shift (⇧ / ⇪) + Spacebar + Hide */}
       <div className="kb-row kb-row-bottom">
         <button
           type="button"
