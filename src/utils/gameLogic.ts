@@ -188,6 +188,7 @@ export function applyPlaySettingsToLine(
   // 3. Apply apostrophe contractions/possessives if "'" is enabled
   if (allowed.has("'")) {
     let appliedApostrophe = false;
+    // Check two-word contraction like "it is" -> "it's"
     for (let i = 0; i < words.length - 1; i++) {
       if (words[i].toLowerCase() === 'it' && words[i + 1].toLowerCase() === 'is') {
         words.splice(i, 2, "it's");
@@ -205,6 +206,7 @@ export function applyPlaySettingsToLine(
         return w;
       });
     }
+    // Guarantee at least one apostrophe on alternating lines when "'" is enabled
     if (!appliedApostrophe && words.length >= 4 && (lineIdx % 2 === 0 || allowed.size === 1)) {
       for (let offset = 0; offset < words.length; offset++) {
         const targetIdx = (1 + h + offset) % words.length;
@@ -271,6 +273,9 @@ export function applyPlaySettingsToLine(
   return words.join(' ');
 }
 
+/**
+ * Formats a multi-line track according to the user's PlaySettings.
+ */
 export function formatTrackLines(lines: string[], settings: PlaySettings): string {
   return lines
     .map((line, idx) => applyPlaySettingsToLine(line, settings, idx))
@@ -329,6 +334,7 @@ export function parseBackupData(
       return { ok: false, error: 'Backup file must contain a valid JSON object.' };
     }
 
+    // Support either wrapped `{ app, stats }` or direct `Stats` JSON
     const candidate = parsed.stats && typeof parsed.stats === 'object' ? parsed.stats : parsed;
 
     if (

@@ -64,6 +64,7 @@ export default function App() {
 
   const playSettings: PlaySettings = stats.settings || DEFAULT_PLAY_SETTINGS;
 
+  // Keep body data-state in sync for automated verification & accessibility
   useEffect(() => {
     if (screen === 'game') {
       document.body.dataset.state = 'playing';
@@ -74,6 +75,7 @@ export default function App() {
     }
   }, [screen]);
 
+  // Render live metadata preview canvas whenever on stats or result screen
   useEffect(() => {
     if (screen === 'stats' && cardCanvasRef.current) {
       renderMetadataCard({ stats, worldIdx: world, mode }, cardCanvasRef.current);
@@ -266,6 +268,7 @@ export default function App() {
         ))}
       </div>
 
+      {/* Interactive Device & Input Style Picker Modal */}
       {showDeviceModal && (
         <div
           role="dialog"
@@ -404,6 +407,7 @@ export default function App() {
 
         {screen === 'menu' && (
           <>
+            {/* Mode Selector + Quick Play CTA */}
             <div className="menu-nav flex flex-wrap items-center justify-center gap-2.5">
               {(['journey', 'zen', 'ghost'] as Mode[]).map(m => (
                 <button
@@ -440,10 +444,12 @@ export default function App() {
                   : 'Race a translucent ghost of your personal best on any world.'}
             </p>
 
+            {/* Quick Play Rules, Device Profile & Audio Strip */}
             <section
               aria-label="Quick Play Settings"
               className="max-w-4xl mx-auto mb-5 bg-white/75 rounded-2xl p-3 sm:px-5 sm:py-3.5 shadow-md border border-white/60 space-y-2.5"
             >
+              {/* Row 1: Device & Input Profile Selector */}
               <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-indigo-900/10">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs font-black uppercase tracking-wider text-indigo-950/70 mr-1">
@@ -489,6 +495,7 @@ export default function App() {
                 </button>
               </div>
 
+              {/* Row 2: Typing Rules & Tone */}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-black uppercase tracking-wider text-indigo-950/70 mr-1">
@@ -580,6 +587,7 @@ export default function App() {
               </div>
             </section>
 
+            {/* 8 Floating Worlds Grid */}
             <div className="world-grid">
               {WORLDS.map((w, i) => {
                 const locked = mode === 'journey' && i >= stats.unlocked;
@@ -597,6 +605,7 @@ export default function App() {
                     }`}
                     style={{ background: `linear-gradient(135deg, ${w.sky[0]}, ${w.sky[1]})` }}
                   >
+                    {/* Subtle bottom contrast scrim so white text is always crisp over bright skies */}
                     <div
                       className="pointer-events-none absolute inset-0"
                       style={{
@@ -645,6 +654,7 @@ export default function App() {
               })}
             </div>
 
+            {/* Bottom Utility Navigation */}
             <div className="menu-actions flex flex-wrap justify-center gap-3">
               <button
                 type="button"
@@ -680,6 +690,7 @@ export default function App() {
           </>
         )}
 
+        {/* PLAY & AUDIO SETTINGS SCREEN */}
         {screen === 'settings' && (
           <div className="max-w-2xl mx-auto bg-white/90 rounded-3xl p-6 sm:p-8 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
@@ -698,6 +709,7 @@ export default function App() {
               </button>
             </div>
 
+            {/* Device & Input Mode Section */}
             <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 mb-4">
               <div className="font-bold text-slate-900 mb-1">
                 Device & Keyboard System
@@ -765,6 +777,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* Typing Rules Section */}
             <div className="space-y-4 mb-6">
               <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80">
                 <div className="flex items-center justify-between gap-4">
@@ -881,6 +894,7 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Track Length */}
               <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80">
                 <div className="font-bold text-slate-900 mb-2">Track Length (Journey & Ghost)</div>
                 <div className="grid grid-cols-4 gap-2">
@@ -911,6 +925,7 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Live Preview Box */}
               <div className="bg-indigo-950 text-white rounded-2xl p-4 font-mono text-sm shadow-inner">
                 <div className="text-[11px] font-sans uppercase tracking-wider text-indigo-300 font-bold mb-1">
                   Live Track Text Preview
@@ -919,6 +934,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* Sound Synthesis & Addictive Reward Tone Studio */}
             <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 mb-6">
               <div className="flex items-center justify-between mb-3">
                 <div>
@@ -1005,6 +1021,7 @@ export default function App() {
           </div>
         )}
 
+        {/* TRACK COMPLETE RESULT SCREEN */}
         {screen === 'result' && result && (
           <div className="max-w-xl mx-auto bg-white/90 rounded-3xl p-6 sm:p-8 shadow-2xl text-center">
             <div className="text-4xl mb-1">🏁</div>
@@ -1022,6 +1039,7 @@ export default function App() {
               <Big label="Top Combo" v={'×' + result.maxCombo} />
             </div>
 
+            {/* Live Shareable Run Metadata Card Preview */}
             <div className="mb-5 bg-slate-900/5 rounded-2xl p-3 border border-slate-200">
               <canvas
                 ref={resultCanvasRef}
@@ -1095,6 +1113,7 @@ export default function App() {
           </div>
         )}
 
+        {/* PROFILE, SHARE METADATA PNG/JPG & JSON EXPORT/IMPORT SCREEN */}
         {screen === 'stats' && (
           <div className="max-w-3xl mx-auto bg-white/90 rounded-3xl p-6 sm:p-8 shadow-2xl">
             <div className="flex items-center justify-between mb-5">
@@ -1124,6 +1143,7 @@ export default function App() {
               <Big label="Worlds Unlocked" v={`${stats.unlocked}/${WORLDS.length}`} />
             </div>
 
+            {/* Export Metadata Card (PNG / JPG / Share) */}
             <section className="bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200 mb-6">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <div>
@@ -1175,6 +1195,7 @@ export default function App() {
               />
             </section>
 
+            {/* Export / Import Save Data (JSON) */}
             <section className="bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200 mb-6">
               <h3 className="font-bold text-slate-900 mb-1">
                 Save Data Backup (Export / Import JSON)
@@ -1243,7 +1264,7 @@ export default function App() {
                     rows={5}
                     value={pasteJson}
                     onChange={e => setPasteJson(e.target.value)}
-                    placeholder="Paste your exported Skyward Stroke JSON backup here..."
+                    placeholder='Paste your exported Skyward Stroke JSON backup here...'
                     className="w-full rounded-xl border border-slate-300 bg-white p-3 font-mono text-xs text-slate-800"
                   />
                   <div className="flex gap-2 mt-2">
@@ -1308,6 +1329,7 @@ export default function App() {
           </div>
         )}
 
+        {/* CLOSET & UPGRADED CHARACTER CUSTOMIZATION SCREEN */}
         {screen === 'closet' && (
           <div className="max-w-2xl mx-auto bg-white/90 rounded-3xl p-6 sm:p-8 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
@@ -1327,18 +1349,16 @@ export default function App() {
               </button>
             </div>
 
-            <RunnerLoadoutPreview
-              stats={stats}
-              onUnlockAll={() => {
-                click(10);
-                update({
-                  ...stats,
-                  tracks: Math.max(stats.tracks, 10),
-                  unlocked: WORLDS.length,
-                });
-                showNotice('ok', 'Unlocked all worlds & cosmetics!');
-              }}
-            />
+            {/* Live Stylized Runner Loadout Card */}
+            <RunnerLoadoutPreview stats={stats} onUnlockAll={() => {
+              click(10);
+              update({
+                ...stats,
+                tracks: Math.max(stats.tracks, 10),
+                unlocked: WORLDS.length,
+              });
+              showNotice('ok', 'Unlocked all worlds & cosmetics!');
+            }} />
 
             {(
               [
@@ -1411,26 +1431,35 @@ function RunnerLoadoutPreview({
   return (
     <div className="mb-6 rounded-2xl bg-gradient-to-r from-indigo-950 via-indigo-900 to-slate-900 text-white p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4 shadow-lg">
       <div className="flex items-center gap-4">
+        {/* Stylized SVG Avatar Preview reflecting equipped Outfit, Scarf, Jetpack & Hat */}
         <svg
           viewBox="0 0 96 96"
           className="w-20 h-20 rounded-2xl bg-white/10 p-2 shrink-0 border border-white/15"
           aria-label="Equipped Runner Preview"
         >
+          {/* Trail sparkles */}
           <circle cx="18" cy="58" r="4" fill="#fde047" opacity="0.85" />
           <circle cx="11" cy="46" r="3" fill="#38bdf8" opacity="0.75" />
           <circle cx="22" cy="70" r="2.5" fill="#f472b6" opacity="0.75" />
+          {/* Jetpack */}
           <rect x="28" y="46" width="10" height="20" rx="3" fill="#334155" />
           <circle cx="31" cy="56" r="3.5" fill="#38bdf8" />
+          {/* Fluttering Scarf */}
           <path
             d="M36 46 Q20 42 14 49 Q24 54 38 50 Z"
             fill={outfit.accent || '#ffffff'}
           />
+          {/* Body */}
           <rect x="36" y="44" width="26" height="28" rx="12" fill={outfit.color} />
+          {/* Collar */}
           <rect x="38" y="43" width="22" height="5" rx="2.5" fill={outfit.accent || '#ffffff'} />
+          {/* Head */}
           <circle cx="49" cy="30" r="14" fill="#fff3eb" />
+          {/* Eyes & Blush */}
           <circle cx="54" cy="29" r="2" fill="#181c30" />
           <circle cx="60" cy="29" r="2" fill="#181c30" />
           <circle cx="52" cy="33" r="2.2" fill="#ff8da1" opacity="0.55" />
+          {/* Dynamic Hat */}
           {hat.id === 'hair' && (
             <path d="M35 26 Q48 10 62 24 Q55 18 45 20 Z" fill="#ff6a2b" />
           )}

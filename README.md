@@ -2,82 +2,82 @@
 
 **Type the path. Find your flow.**
 
-Skyward Stroke is a 3D typing adventure set across 8 floating low-poly worlds. Each world is a track of text you type your way through letter by letter, and every keystroke moves your runner one step further along the floating bridge. Keep a clean streak to climb through the harmonic flow tiers — emerald, gold, and transcendent magenta.
+Skyward Stroke is a browser typing game set across floating low-poly worlds. Each world is a track
+of text you type your way through letter by letter, and every keystroke moves your runner one step
+further along the path. Keep a clean streak and the screen shifts through the flow tiers — green,
+gold, then pink.
 
-Built with React 19, TypeScript, Vite, Tailwind CSS 4, Web Audio API synthesis, and Three.js, and configured as a standalone **Progressive Web App (PWA)** that installs onto desktop, mobile, and emulator home screens without any browser top bar.
+Built with React 19, TypeScript, Vite, Tailwind CSS 4 and three.js.
 
-## Getting Started
+## Getting started
 
 ```bash
 npm install     # install dependencies
-npm run dev     # start the dev server (http://localhost:3000)
+npm run dev     # start the dev server (http://localhost:5173)
 ```
 
-### Available Scripts
+Other scripts:
 
-| Script                                           | Description                                                       |
-| ------------------------------------------------ | ----------------------------------------------------------------- |
-| `npm run dev`                                    | Start the Vite development server with PWA manifest & SW enabled  |
-| `npm run build`                                  | Type-check and build the production app + PWA service worker      |
-| `npm run preview`                                | Serve the production build locally                                |
-| `npm run typecheck` / `npm run lint`             | Run TypeScript compiler verification (`tsc --noEmit`)             |
-| `npx --yes tsx --test src/utils/gameLogic.test.ts` | Run the deterministic unit test suite (`node:test`)             |
+| Script              | What it does                                              |
+| ------------------- | --------------------------------------------------------- |
+| `npm run build`     | Type-check, then build a single self-contained `dist/index.html` |
+| `npm run preview`   | Serve the production build locally                         |
+| `npm run typecheck` | Type-check only, no output                                 |
 
-## Key Features
+The production build inlines all JS and CSS into one HTML file (`vite-plugin-singlefile`), so
+`dist/index.html` can be opened or hosted on its own.
 
-### 1. Three Game Modes Across 8 Floating Worlds
-- **Journey** — Clear each floating world to unlock the next: *Sky Gardens*, *Neon Grid*, *Icy Peaks*, *Amber Dunes*, *Jade Sanctuary*, *Obsidian Forge*, *Coral Abyss*, and *Cosmic Void*.
-- **Zen** — No timers, no numbers — an endless stream of words and sky.
-- **Ghost** — Race a translucent 3D replay of your personal best run.
+## How it plays
 
-### 2. Tailored Device & Keyboard Systems
-Choose the interface and input system that matches your device or emulator (from the Main Menu, the **Device Guide** modal, **Settings**, or live inside the **Game HUD**):
-- **🖥️ Desktop / Physical Keyboard (`desktop`)** — Widescreen 3D horizon layout with a clean floating HUD for hardware keyboards (`Esc` returns to menu).
-- **📱 Mobile / Native Device OS Keyboard (`mobile-native`)** — Mobile-optimized HUD with a dedicated **Native OS Keyboard Dock** that summons your phone's real built-in keyboard (iOS / Gboard / Android) with native uppercase, punctuation, and dynamic `visualViewport` framing.
-- **⌨️ Touch / Built-in Virtual Keyboard (`touch-virtual`)** — Universal tablet and emulator deck featuring an always-visible punctuation bar `( , . ' & - ? ! )`, `123` number layer toggle, `⇧ Shift` / `⇪ Caps`, **Smart Auto-Shift** (automatically shifts keycaps to `A–Z` when the next expected letter is uppercase), and golden next-key target highlights.
+- **Journey** — clear each world to unlock the next.
+- **Zen** — no timers, no numbers, an endless stream of lines.
+- **Ghost** — race a translucent replay of your own personal best.
 
-### 3. Customizable Play Rules & Harmonic Reward Audio
-- **Play Modifiers**: Toggle **Allow Uppercase (`A–Z`)**, **Allow Punctuation `( , . ' & - ? ! )`** (master toggle plus individual character switches), **Allow Numbers (`0–9`)**, and **Track Length (`2 / 3 / 5 / 8` lines)** with a live track preview.
-- **Reward Tone Synthesizer**: Web Audio synthesis with stereo shimmer delay, master dynamics compression, harmonic scale progression, word-completion triad chords, milestone fanfares, and 4 selectable sound profiles (*Crystalline*, *Thocky PBT*, *Marimba*, and *Synthwave*).
+Each personal best is saved as a *ghost*: the exact text you typed and the moment each letter
+landed. That is also why the first three lines of every world are fixed — ghosts recorded before
+tracks were shuffled were typed on those lines.
 
-### 4. Runner Closet, Shareable Metadata Cards & JSON Backup
-- **Runner Closet**: Equip 7 outfits (with animated fluttering scarf & collar trim), 6 hats, and 5 particle trails on your 3D runner.
-- **Shareable Metadata Card (`PNG` / `JPG` / Web Share)**: Render and download a high-resolution `1200×630` card showcasing your rank, WPM, accuracy, top combo, unlocked worlds, and active rules.
-- **Save Data Export / Import (`JSON`)**: Export your complete progress, ghosts, cosmetics, and settings as a `.json` file (or copy to clipboard) and restore anytime.
+Progress (stats, ghosts, unlocked worlds, and your outfit/hat/trail look) lives in `localStorage`
+under the key `skyward-stroke-v1`. Clearing site data resets it.
 
-### 5. Installable Standalone PWA (`display: "standalone"`)
-- **Web App Manifest (`/manifest.webmanifest`)**: Declares application identity (`name`, `short_name`, `description`), `id: "/"`, `start_url: "/"`, `scope: "/"`, `display: "standalone"`, `orientation: "portrait"`, `theme_color: "#1e1b4b"`, `background_color: "#1e1b4b"`, and `prefer_related_applications: false`.
-- **Application Icons**: Includes `public/icon-192.png` (`192×192`), `public/icon-512.png` (`512×512`), and a separately designed mask-safe `public/icon-maskable-512.png` (`512×512`, `purpose: "maskable"`).
-- **Installability Service Worker (`public/sw.js` & `src/register-sw.ts`)**: Globally registered via `<RegisterSW />` in `src/main.tsx`. Implements a network pass-through worker (`skipWaiting`, `clients.claim`, and same-origin `GET` pass-through excluding `/api/*` and `/login`) that deliberately caches nothing.
+On touch devices an on-screen keyboard appears and can be hidden with the `⌨` key; a physical
+keyboard hides it automatically. `Esc` leaves a run back to the menu.
 
-## Project Layout
+## Naming and configuration
+
+The application's name and identity are defined in one place, [`src/config.ts`](src/config.ts):
+
+```ts
+export const APP_NAME = 'Skyward Stroke';
+export const APP_CODE_NAME = 'SKYWARDSTROKE';
+```
+
+`APP_NAME_WORDS` (the title, split per word for wrapping), `APP_TAGLINE`, `APP_DESCRIPTION`,
+`APP_VERSION` and `STORAGE_KEY` live there too. The menu title, the background letter tiles, the
+tagline and the saved-progress namespace all read from it, so renaming the product is a one-file
+change. `index.html` carries the browser title and icon; the package name is `skyward-stroke` in
+`package.json`.
+
+## Project layout
 
 ```
-index.html                 entry HTML: title, viewport-fit=cover, theme-color, manifest & icon links
-vite.config.ts             Vite + React + Tailwind + PWA MIME header configuration
-public/
-  manifest.webmanifest     Web App Manifest (display: standalone)
-  sw.js                    network pass-through Service Worker (no offline cache)
-  icon.svg                 vector brand icon
-  icon-192.png             192×192 standard PWA icon
-  icon-512.png             512×512 standard PWA icon
-  icon-maskable-512.png    512×512 maskable Android icon (with safe-zone padding)
+index.html            entry HTML: browser title, meta tags, icon
+vite.config.ts        Vite + React + Tailwind + single-file build config
 src/
-  config.ts                application name, code name, tagline, version, storage key
-  main.tsx                 React root + global <RegisterSW /> component
-  register-sw.ts           client component registering /sw.js
-  App.tsx                  menu, device selector, world grid, results, profile, closet, settings
-  Game.tsx                 single run: prompt tape, HUD, physical/native/virtual input handling
-  Engine.ts                three.js scene: 8 floating world themes, multi-part runner, particles
-  framing.ts               camera framing that keeps the 3D scene clear of HUD & keyboards
-  Keyboard.tsx             built-in virtual keyboard with punctuation, auto-shift & target guide
-  audio.ts                 Web Audio synthesizer: 4 sound profiles, chords, fanfares, music
-  data.ts                  worlds, prompt decks, cosmetics, saved stats and ghosts
-  index.css                Tailwind import plus game, HUD, and virtual keyboard styles
-  utils/
-    gameLogic.ts           pure typing modifiers, virtual keyboard resolver & JSON backup parser
-    gameLogic.test.ts      unit test suite (node:test)
-    shareCard.ts           1200×630 canvas metadata card renderer & PNG/JPG/JSON exporter
-    cn.ts                  className helper
+  config.ts           application name, code name, tagline, storage key
+  main.tsx            React root
+  App.tsx             menu, world select, results, profile, closet
+  Game.tsx            a single run: prompt tape, HUD, input handling, layout
+  Engine.ts           three.js scene: floating islands, runner, particles
+  framing.ts          camera framing that keeps the scene clear of the UI
+  Keyboard.tsx        on-screen keyboard for touch screens
+  audio.ts            Web Audio: key clicks, chimes, ambient music
+  data.ts             worlds, tracks, cosmetics, saved stats and ghosts
+  index.css           Tailwind import plus the game and menu styles
+  utils/cn.ts         className helper
 ```
 
+## Deployment
+
+`npm run build` produces a single `dist/index.html` with no external asset requests, so it can be
+dropped onto any static host — or opened straight from disk.
